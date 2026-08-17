@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="C-TalentLens.csproj" />
+  <Project Path="C-TalentLens.Tests/C-TalentLens.Tests.csproj" />
+</Solution>

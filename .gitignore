@@ -1,0 +1,26 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build and publish output
+artifacts/
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Local configuration and secrets
+appsettings.Local.json
+*.db
+*.db-shm
+*.db-wal
+
+# IDE/editor noise
+.idea/
+.vscode/
+*.swp
+*.tmp

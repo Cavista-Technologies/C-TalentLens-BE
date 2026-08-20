@@ -1,6 +1,6 @@
 namespace C_TalentLens.Domain;
 
-public sealed class Requisition
+public class Requisition
 {
     private readonly List<StageTransition> _stageHistory = [];
     private readonly List<Bottleneck> _bottlenecks = [];
@@ -21,7 +21,12 @@ public sealed class Requisition
         RequisitionPriority priority,
         DateOnly dateOpened,
         DateOnly advertisementDate,
-        int hiringGoal)
+        int hiringGoal,
+        RequisitionOpeningReason openingReason = RequisitionOpeningReason.Other,
+        string? customOpeningReason = null,
+        PostingType postingType = PostingType.External,
+        string? statusComment = null,
+        string? hiringManagerNotes = null)
     {
         Id = Guid.NewGuid();
         RequisitionCode = GuardRequired(requisitionCode);
@@ -35,6 +40,11 @@ public sealed class Requisition
         DateOpened = dateOpened;
         AdvertisementDate = advertisementDate;
         HiringGoal = GuardNonNegative(hiringGoal, nameof(hiringGoal));
+        OpeningReason = openingReason;
+        CustomOpeningReason = string.IsNullOrWhiteSpace(customOpeningReason) ? null : customOpeningReason.Trim();
+        PostingType = postingType;
+        StatusComment = string.IsNullOrWhiteSpace(statusComment) ? null : statusComment.Trim();
+        HiringManagerNotes = string.IsNullOrWhiteSpace(hiringManagerNotes) ? null : hiringManagerNotes.Trim();
         FilledGoal = 0;
         CurrentStatus = RequisitionStatus.Open;
         CreatedAt = DateTimeOffset.UtcNow;
@@ -66,6 +76,16 @@ public sealed class Requisition
     public DateOnly AdvertisementDate { get; private set; }
 
     public int HiringGoal { get; private set; }
+
+    public RequisitionOpeningReason OpeningReason { get; private set; }
+
+    public string? CustomOpeningReason { get; private set; }
+
+    public PostingType PostingType { get; private set; }
+
+    public string? StatusComment { get; private set; }
+
+    public string? HiringManagerNotes { get; private set; }
 
     public int FilledGoal { get; private set; }
 
@@ -105,8 +125,8 @@ public sealed class Requisition
         var daysOpen = DaysOpen(today);
         return daysOpen switch
         {
-            >= 30 => Domain.SlaState.Breached,
-            >= 25 => Domain.SlaState.Warning,
+            >= RecruitmentRules.SlaBreachDays => Domain.SlaState.Breached,
+            >= RecruitmentRules.SlaWarningDays => Domain.SlaState.Warning,
             _ => Domain.SlaState.OnTrack
         };
     }
@@ -132,7 +152,12 @@ public sealed class Requisition
         DateOnly dateOpened,
         DateOnly advertisementDate,
         int hiringGoal,
-        int filledGoal)
+        int filledGoal,
+        RequisitionOpeningReason openingReason = RequisitionOpeningReason.Other,
+        string? customOpeningReason = null,
+        PostingType postingType = PostingType.External,
+        string? statusComment = null,
+        string? hiringManagerNotes = null)
     {
         RoleName = GuardRequired(roleName);
         Department = GuardRequired(department);
@@ -145,6 +170,11 @@ public sealed class Requisition
         AdvertisementDate = advertisementDate;
         HiringGoal = GuardNonNegative(hiringGoal, nameof(hiringGoal));
         FilledGoal = GuardNonNegative(filledGoal, nameof(filledGoal));
+        OpeningReason = openingReason;
+        CustomOpeningReason = string.IsNullOrWhiteSpace(customOpeningReason) ? null : customOpeningReason.Trim();
+        PostingType = postingType;
+        StatusComment = string.IsNullOrWhiteSpace(statusComment) ? null : statusComment.Trim();
+        HiringManagerNotes = string.IsNullOrWhiteSpace(hiringManagerNotes) ? null : hiringManagerNotes.Trim();
 
         if (FilledGoal > HiringGoal)
         {
@@ -208,12 +238,42 @@ public sealed class Requisition
         return bottleneck;
     }
 
-    public ActionItem AddActionItem(string description, Guid ownerUserId, string owner, DateOnly? dueDate)
+    public ActionItem AddActionItem(
+        string title,
+        string description,
+        ActionItemCategory category,
+        string? customCategory,
+        ActionItemPriority priority,
+        Guid ownerUserId,
+        string owner,
+        DateOnly? dueDate)
     {
-        var actionItem = new ActionItem(Id, GuardRequired(description), GuardUserId(ownerUserId, nameof(ownerUserId)), GuardRequired(owner), dueDate);
+        var actionItem = new ActionItem(
+            Id,
+            GuardRequired(title),
+            GuardRequired(description),
+            category,
+            customCategory,
+            priority,
+            GuardUserId(ownerUserId, nameof(ownerUserId)),
+            GuardRequired(owner),
+            dueDate);
         _actionItems.Add(actionItem);
         Touch();
         return actionItem;
+    }
+
+    public ActionItem AddActionItem(string description, Guid ownerUserId, string owner, DateOnly? dueDate)
+    {
+        return AddActionItem(
+            description,
+            description,
+            ActionItemCategory.Other,
+            "General",
+            ActionItemPriority.Medium,
+            ownerUserId,
+            owner,
+            dueDate);
     }
 
     private void Touch(DateTimeOffset? now = null)

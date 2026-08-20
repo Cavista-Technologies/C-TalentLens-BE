@@ -1,6 +1,6 @@
 namespace C_TalentLens.Domain;
 
-public sealed class Bottleneck
+public class Bottleneck
 {
     private Bottleneck()
     {

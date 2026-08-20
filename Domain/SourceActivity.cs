@@ -1,6 +1,6 @@
 namespace C_TalentLens.Domain;
 
-public sealed class SourceActivity
+public class SourceActivity
 {
     private SourceActivity()
     {

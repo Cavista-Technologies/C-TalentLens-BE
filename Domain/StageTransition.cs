@@ -1,6 +1,6 @@
 namespace C_TalentLens.Domain;
 
-public sealed class StageTransition
+public class StageTransition
 {
     private StageTransition()
     {

@@ -21,10 +21,10 @@ public class SourceActivity
         }
 
         Id = Guid.NewGuid();
-        RequisitionId = GuardUserId(requisitionId, nameof(requisitionId));
-        CandidateName = GuardRequired(candidateName);
+        RequisitionId = DomainGuard.RequiredId(requisitionId, nameof(requisitionId));
+        CandidateName = DomainGuard.Required(candidateName, nameof(candidateName));
         Source = source;
-        CustomSource = GuardOptional(customSource);
+        CustomSource = DomainGuard.Optional(customSource);
         ActivityDate = activityDate;
         Status = status;
         HiredAt = status == SourceActivityStatus.Hired ? hiredAt ?? activityDate : hiredAt;
@@ -55,22 +55,4 @@ public class SourceActivity
         ? CustomSource
         : Source.ToString();
 
-    private static string GuardRequired(string value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Value is required.", nameof(value))
-            : value.Trim();
-    }
-
-    private static string? GuardOptional(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
-
-    private static Guid GuardUserId(Guid value, string parameterName)
-    {
-        return value == Guid.Empty
-            ? throw new ArgumentException("Id is required.", parameterName)
-            : value;
-    }
 }

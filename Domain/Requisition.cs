@@ -29,22 +29,22 @@ public class Requisition
         string? hiringManagerNotes = null)
     {
         Id = Guid.NewGuid();
-        RequisitionCode = GuardRequired(requisitionCode);
-        RoleName = GuardRequired(roleName);
-        Department = GuardRequired(department);
-        HiringManagerUserId = GuardUserId(hiringManagerUserId, nameof(hiringManagerUserId));
-        HiringManager = GuardRequired(hiringManager);
-        RecruiterUserId = GuardUserId(recruiterUserId, nameof(recruiterUserId));
-        Recruiter = GuardRequired(recruiter);
+        RequisitionCode = DomainGuard.Required(requisitionCode, nameof(requisitionCode));
+        RoleName = DomainGuard.Required(roleName, nameof(roleName));
+        Department = DomainGuard.Required(department, nameof(department));
+        HiringManagerUserId = DomainGuard.RequiredId(hiringManagerUserId, nameof(hiringManagerUserId), "User id is required.");
+        HiringManager = DomainGuard.Required(hiringManager, nameof(hiringManager));
+        RecruiterUserId = DomainGuard.RequiredId(recruiterUserId, nameof(recruiterUserId), "User id is required.");
+        Recruiter = DomainGuard.Required(recruiter, nameof(recruiter));
         Priority = priority;
         DateOpened = dateOpened;
         AdvertisementDate = advertisementDate;
-        HiringGoal = GuardNonNegative(hiringGoal, nameof(hiringGoal));
+        HiringGoal = DomainGuard.NonNegative(hiringGoal, nameof(hiringGoal));
         OpeningReason = openingReason;
-        CustomOpeningReason = string.IsNullOrWhiteSpace(customOpeningReason) ? null : customOpeningReason.Trim();
+        CustomOpeningReason = DomainGuard.Optional(customOpeningReason);
         PostingType = postingType;
-        StatusComment = string.IsNullOrWhiteSpace(statusComment) ? null : statusComment.Trim();
-        HiringManagerNotes = string.IsNullOrWhiteSpace(hiringManagerNotes) ? null : hiringManagerNotes.Trim();
+        StatusComment = DomainGuard.Optional(statusComment);
+        HiringManagerNotes = DomainGuard.Optional(hiringManagerNotes);
         FilledGoal = 0;
         CurrentStatus = RequisitionStatus.Open;
         CreatedAt = DateTimeOffset.UtcNow;
@@ -159,29 +159,29 @@ public class Requisition
         string? statusComment = null,
         string? hiringManagerNotes = null)
     {
-        RoleName = GuardRequired(roleName);
-        Department = GuardRequired(department);
-        HiringManagerUserId = GuardUserId(hiringManagerUserId, nameof(hiringManagerUserId));
-        HiringManager = GuardRequired(hiringManager);
-        RecruiterUserId = GuardUserId(recruiterUserId, nameof(recruiterUserId));
-        Recruiter = GuardRequired(recruiter);
+        RoleName = DomainGuard.Required(roleName, nameof(roleName));
+        Department = DomainGuard.Required(department, nameof(department));
+        HiringManagerUserId = DomainGuard.RequiredId(hiringManagerUserId, nameof(hiringManagerUserId), "User id is required.");
+        HiringManager = DomainGuard.Required(hiringManager, nameof(hiringManager));
+        RecruiterUserId = DomainGuard.RequiredId(recruiterUserId, nameof(recruiterUserId), "User id is required.");
+        Recruiter = DomainGuard.Required(recruiter, nameof(recruiter));
         Priority = priority;
         DateOpened = dateOpened;
         AdvertisementDate = advertisementDate;
-        HiringGoal = GuardNonNegative(hiringGoal, nameof(hiringGoal));
-        FilledGoal = GuardNonNegative(filledGoal, nameof(filledGoal));
+        HiringGoal = DomainGuard.NonNegative(hiringGoal, nameof(hiringGoal));
+        FilledGoal = DomainGuard.NonNegative(filledGoal, nameof(filledGoal));
         OpeningReason = openingReason;
-        CustomOpeningReason = string.IsNullOrWhiteSpace(customOpeningReason) ? null : customOpeningReason.Trim();
+        CustomOpeningReason = DomainGuard.Optional(customOpeningReason);
         PostingType = postingType;
-        StatusComment = string.IsNullOrWhiteSpace(statusComment) ? null : statusComment.Trim();
-        HiringManagerNotes = string.IsNullOrWhiteSpace(hiringManagerNotes) ? null : hiringManagerNotes.Trim();
+        StatusComment = DomainGuard.Optional(statusComment);
+        HiringManagerNotes = DomainGuard.Optional(hiringManagerNotes);
 
         if (FilledGoal > HiringGoal)
         {
             throw new InvalidOperationException("Filled goals cannot exceed the hiring goal.");
         }
 
-        Touch();
+        MarkAsUpdated();
     }
 
     public void MoveTo(RequisitionStatus status, DateOnly? effectiveDate = null)
@@ -208,7 +208,7 @@ public class Requisition
         }
 
         _stageHistory.Add(StageTransition.Start(Id, status, now));
-        Touch(now);
+        MarkAsUpdated(now);
     }
 
     public Bottleneck AddBottleneck(
@@ -224,17 +224,17 @@ public class Requisition
     {
         var bottleneck = new Bottleneck(
             Id,
-            GuardRequired(title),
+            DomainGuard.Required(title, nameof(title)),
             category,
             customCategory,
-            GuardRequired(description),
+            DomainGuard.Required(description, nameof(description)),
             priority,
-            GuardRequired(businessImpact),
-            GuardUserId(ownerUserId, nameof(ownerUserId)),
-            GuardRequired(owner),
+            DomainGuard.Required(businessImpact, nameof(businessImpact)),
+            DomainGuard.RequiredId(ownerUserId, nameof(ownerUserId), "User id is required."),
+            DomainGuard.Required(owner, nameof(owner)),
             identifiedAt);
         _bottlenecks.Add(bottleneck);
-        Touch();
+        MarkAsUpdated();
         return bottleneck;
     }
 
@@ -250,16 +250,16 @@ public class Requisition
     {
         var actionItem = new ActionItem(
             Id,
-            GuardRequired(title),
-            GuardRequired(description),
+            DomainGuard.Required(title, nameof(title)),
+            DomainGuard.Required(description, nameof(description)),
             category,
             customCategory,
             priority,
-            GuardUserId(ownerUserId, nameof(ownerUserId)),
-            GuardRequired(owner),
+            DomainGuard.RequiredId(ownerUserId, nameof(ownerUserId), "User id is required."),
+            DomainGuard.Required(owner, nameof(owner)),
             dueDate);
         _actionItems.Add(actionItem);
-        Touch();
+        MarkAsUpdated();
         return actionItem;
     }
 
@@ -276,29 +276,9 @@ public class Requisition
             dueDate);
     }
 
-    private void Touch(DateTimeOffset? now = null)
+    private void MarkAsUpdated(DateTimeOffset? now = null)
     {
         UpdatedAt = now ?? DateTimeOffset.UtcNow;
     }
 
-    private static string GuardRequired(string value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Value is required.", nameof(value))
-            : value.Trim();
-    }
-
-    private static int GuardNonNegative(int value, string parameterName)
-    {
-        return value < 0
-            ? throw new ArgumentOutOfRangeException(parameterName, "Value cannot be negative.")
-            : value;
-    }
-
-    private static Guid GuardUserId(Guid value, string parameterName)
-    {
-        return value == Guid.Empty
-            ? throw new ArgumentException("User id is required.", parameterName)
-            : value;
-    }
 }

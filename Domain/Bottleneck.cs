@@ -20,12 +20,12 @@ public class Bottleneck
     {
         Id = Guid.NewGuid();
         RequisitionId = requisitionId;
-        Title = GuardRequired(title);
+        Title = DomainGuard.Required(title, nameof(title));
         Category = category;
-        CustomCategory = GuardOptional(customCategory);
-        Description = GuardRequired(description);
+        CustomCategory = DomainGuard.Optional(customCategory);
+        Description = DomainGuard.Required(description, nameof(description));
         Priority = priority;
-        BusinessImpact = GuardRequired(businessImpact);
+        BusinessImpact = DomainGuard.Required(businessImpact, nameof(businessImpact));
         OwnerUserId = ownerUserId;
         Owner = owner;
         Status = BlockerStatus.Open;
@@ -75,9 +75,9 @@ public class Bottleneck
         Status = BlockerStatus.Resolved;
         ResolvedAt = DateTimeOffset.UtcNow;
         ResolutionOwnerUserId = resolutionOwnerUserId;
-        ResolutionOwner = GuardRequired(resolutionOwner);
-        ResolutionSummary = GuardRequired(resolutionSummary);
-        LessonsLearned = GuardOptional(lessonsLearned);
+        ResolutionOwner = DomainGuard.Required(resolutionOwner, nameof(resolutionOwner));
+        ResolutionSummary = DomainGuard.Required(resolutionSummary, nameof(resolutionSummary));
+        LessonsLearned = DomainGuard.Optional(lessonsLearned);
     }
 
     public void UpdateStatus(BlockerStatus status)
@@ -90,15 +90,4 @@ public class Bottleneck
         Status = status;
     }
 
-    private static string GuardRequired(string value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Value is required.", nameof(value))
-            : value.Trim();
-    }
-
-    private static string? GuardOptional(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
 }

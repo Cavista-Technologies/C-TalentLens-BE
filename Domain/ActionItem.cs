@@ -21,13 +21,13 @@ public class ActionItem
     {
         Id = Guid.NewGuid();
         RequisitionId = requisitionId;
-        Title = GuardRequired(title);
-        Description = GuardRequired(description);
+        Title = DomainGuard.Required(title, nameof(title));
+        Description = DomainGuard.Required(description, nameof(description));
         Category = category;
-        CustomCategory = string.IsNullOrWhiteSpace(customCategory) ? null : customCategory.Trim();
+        CustomCategory = DomainGuard.Optional(customCategory);
         Priority = priority;
         OwnerUserId = ownerUserId;
-        Owner = GuardRequired(owner);
+        Owner = DomainGuard.Required(owner, nameof(owner));
         DueDate = dueDate;
         Status = ActionItemStatus.NotStarted;
         CreatedAt = DateTimeOffset.UtcNow;
@@ -108,7 +108,7 @@ public class ActionItem
         OwnerUserId = ownerUserId == Guid.Empty
             ? throw new ArgumentException("Owner user id is required.", nameof(ownerUserId))
             : ownerUserId;
-        Owner = GuardRequired(owner);
+        Owner = DomainGuard.Required(owner, nameof(owner));
         var history = new ActionItemHistory(
             Id,
             ActionItemEventType.OwnerChanged,
@@ -172,8 +172,8 @@ public class ActionItem
         Status = ActionItemStatus.Completed;
         CompletedAt = DateTimeOffset.UtcNow;
         CompletedByUserId = completedByUserId;
-        CompletedBy = GuardRequired(completedBy);
-        CompletionNotes = string.IsNullOrWhiteSpace(completionNotes) ? null : completionNotes.Trim();
+        CompletedBy = DomainGuard.Required(completedBy, nameof(completedBy));
+        CompletionNotes = DomainGuard.Optional(completionNotes);
         var history = new ActionItemHistory(
             Id,
             ActionItemEventType.Completed,
@@ -186,10 +186,4 @@ public class ActionItem
         return history;
     }
 
-    private static string GuardRequired(string value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Value is required.", nameof(value))
-            : value.Trim();
-    }
 }

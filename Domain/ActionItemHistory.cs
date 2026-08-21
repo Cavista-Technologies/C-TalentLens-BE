@@ -16,17 +16,13 @@ public class ActionItemHistory
         string? notes = null)
     {
         Id = Guid.NewGuid();
-        ActionItemId = actionItemId == Guid.Empty
-            ? throw new ArgumentException("Action item id is required.", nameof(actionItemId))
-            : actionItemId;
+        ActionItemId = DomainGuard.RequiredId(actionItemId, nameof(actionItemId), "Action item id is required.");
         EventType = eventType;
-        ChangedByUserId = changedByUserId == Guid.Empty
-            ? throw new ArgumentException("Changed by user id is required.", nameof(changedByUserId))
-            : changedByUserId;
-        ChangedBy = GuardRequired(changedBy);
-        FromValue = string.IsNullOrWhiteSpace(fromValue) ? null : fromValue.Trim();
-        ToValue = string.IsNullOrWhiteSpace(toValue) ? null : toValue.Trim();
-        Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        ChangedByUserId = DomainGuard.RequiredId(changedByUserId, nameof(changedByUserId), "Changed by user id is required.");
+        ChangedBy = DomainGuard.Required(changedBy, nameof(changedBy));
+        FromValue = DomainGuard.Optional(fromValue);
+        ToValue = DomainGuard.Optional(toValue);
+        Notes = DomainGuard.Optional(notes);
         ChangedAt = DateTimeOffset.UtcNow;
     }
 
@@ -48,10 +44,4 @@ public class ActionItemHistory
 
     public DateTimeOffset ChangedAt { get; private set; }
 
-    private static string GuardRequired(string value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Value is required.", nameof(value))
-            : value.Trim();
-    }
 }

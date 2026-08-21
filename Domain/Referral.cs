@@ -30,23 +30,21 @@ public class Referral
         DateOnly? hiredAt)
     {
         Id = Guid.NewGuid();
-        RequisitionId = requisitionId == Guid.Empty
-            ? throw new ArgumentException("Requisition id is required.", nameof(requisitionId))
-            : requisitionId;
-        ReferrerName = GuardRequired(referrerName);
-        ReferrerEmployeeId = string.IsNullOrWhiteSpace(referrerEmployeeId) ? null : referrerEmployeeId.Trim();
-        ReferrerDepartment = GuardRequired(referrerDepartment);
-        CandidateName = GuardRequired(candidateName);
-        CandidateEmail = GuardRequired(candidateEmail);
-        CandidatePhoneNumber = string.IsNullOrWhiteSpace(candidatePhoneNumber) ? null : candidatePhoneNumber.Trim();
-        ResumeUrl = string.IsNullOrWhiteSpace(resumeUrl) ? null : resumeUrl.Trim();
-        SubmitterEmail = string.IsNullOrWhiteSpace(submitterEmail) ? null : submitterEmail.Trim();
-        SubmitterName = string.IsNullOrWhiteSpace(submitterName) ? null : submitterName.Trim();
+        RequisitionId = DomainGuard.RequiredId(requisitionId, nameof(requisitionId), "Requisition id is required.");
+        ReferrerName = DomainGuard.Required(referrerName, nameof(referrerName));
+        ReferrerEmployeeId = DomainGuard.Optional(referrerEmployeeId);
+        ReferrerDepartment = DomainGuard.Required(referrerDepartment, nameof(referrerDepartment));
+        CandidateName = DomainGuard.Required(candidateName, nameof(candidateName));
+        CandidateEmail = DomainGuard.Required(candidateEmail, nameof(candidateEmail));
+        CandidatePhoneNumber = DomainGuard.Optional(candidatePhoneNumber);
+        ResumeUrl = DomainGuard.Optional(resumeUrl);
+        SubmitterEmail = DomainGuard.Optional(submitterEmail);
+        SubmitterName = DomainGuard.Optional(submitterName);
         FormStartedAt = formStartedAt;
         FormCompletedAt = formCompletedAt;
-        CandidateRelationship = string.IsNullOrWhiteSpace(candidateRelationship) ? null : candidateRelationship.Trim();
-        CandidateKnownDuration = string.IsNullOrWhiteSpace(candidateKnownDuration) ? null : candidateKnownDuration.Trim();
-        CandidateAlignmentComment = string.IsNullOrWhiteSpace(candidateAlignmentComment) ? null : candidateAlignmentComment.Trim();
+        CandidateRelationship = DomainGuard.Optional(candidateRelationship);
+        CandidateKnownDuration = DomainGuard.Optional(candidateKnownDuration);
+        CandidateAlignmentComment = DomainGuard.Optional(candidateAlignmentComment);
         SubmissionDate = submissionDate;
         Status = status;
         HiringOutcome = NormalizeOutcome(status, hiringOutcome);
@@ -172,10 +170,4 @@ public class Referral
         };
     }
 
-    private static string GuardRequired(string value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? throw new ArgumentException("Value is required.", nameof(value))
-            : value.Trim();
-    }
 }

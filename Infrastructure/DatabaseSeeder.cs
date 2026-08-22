@@ -17,6 +17,7 @@ public static class DatabaseSeeder
         var users = await SeedIdentityAsync(roleManager, userManager);
         await SeedRequisitionsAsync(dbContext, users, cancellationToken);
         await SeedSourceActivitiesAsync(dbContext, cancellationToken);
+        await SeedReferralsAsync(dbContext, cancellationToken);
     }
 
     private static async Task<IReadOnlyDictionary<string, ApplicationUser>> SeedIdentityAsync(
@@ -175,7 +176,12 @@ public static class DatabaseSeeder
             RequisitionPriority.High,
             today.AddDays(-34),
             today.AddDays(-32),
-            2);
+            2,
+            RequisitionOpeningReason.Expansion,
+            null,
+            PostingType.External,
+            "Ongoing technical interviews; feedback pending from final interview panel.",
+            "Primary Python, ML/AI experience, and strong distributed systems background preferred.");
         backendEngineer.MoveTo(RequisitionStatus.Interviewing);
         backendEngineer.AddBottleneck(
             "Hiring manager feedback delay after technical interview.",
@@ -188,7 +194,11 @@ public static class DatabaseSeeder
             "Ada Okafor",
             DateTimeOffset.UtcNow.AddDays(-15));
         backendEngineer.AddActionItem(
+            "Escalate interview feedback",
             "Escalate pending interview feedback.",
+            ActionItemCategory.HiringManagerFeedback,
+            null,
+            ActionItemPriority.High,
             users["Maya Chen"].Id,
             "Maya Chen",
             today.AddDays(1));
@@ -204,10 +214,19 @@ public static class DatabaseSeeder
             RequisitionPriority.Medium,
             today.AddDays(-24),
             today.AddDays(-23),
-            1);
+            1,
+            RequisitionOpeningReason.Backfill,
+            null,
+            PostingType.External,
+            "Offer approval pending compensation confirmation.",
+            "Portfolio should show B2B SaaS and design systems experience.");
         productDesigner.MoveTo(RequisitionStatus.OfferStage);
         productDesigner.AddActionItem(
+            "Confirm compensation range",
             "Confirm compensation range before offer approval.",
+            ActionItemCategory.CompensationReview,
+            null,
+            ActionItemPriority.Medium,
             users["Noah Bello"].Id,
             "Noah Bello",
             today);
@@ -223,7 +242,12 @@ public static class DatabaseSeeder
             RequisitionPriority.Low,
             today.AddDays(-12),
             today.AddDays(-10),
-            3);
+            3,
+            RequisitionOpeningReason.Expansion,
+            null,
+            PostingType.InternalAndExternal,
+            "Screening active candidates from referrals and direct applications.",
+            "Prior enterprise sales leadership experience is important.");
         salesManager.MoveTo(RequisitionStatus.Screening);
 
         var dataAnalyst = new Requisition(
@@ -237,7 +261,12 @@ public static class DatabaseSeeder
             RequisitionPriority.High,
             today.AddDays(-18),
             today.AddDays(-17),
-            1);
+            1,
+            RequisitionOpeningReason.Backfill,
+            null,
+            PostingType.Internal,
+            "Candidate selected and offer accepted.",
+            "Internal mobility candidates preferred due to People Analytics context.");
         dataAnalyst.MoveTo(RequisitionStatus.OfferExtended, today.AddDays(-2));
         dataAnalyst.MoveTo(RequisitionStatus.Closed, today.AddDays(-1));
         dataAnalyst.UpdateDetails(
@@ -251,7 +280,12 @@ public static class DatabaseSeeder
             dataAnalyst.DateOpened,
             dataAnalyst.AdvertisementDate,
             1,
-            1);
+            1,
+            RequisitionOpeningReason.Backfill,
+            null,
+            PostingType.Internal,
+            "Candidate selected and offer accepted.",
+            "Internal mobility candidates preferred due to People Analytics context.");
 
         dbContext.Requisitions.AddRange(backendEngineer, productDesigner, salesManager, dataAnalyst);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -312,6 +346,85 @@ public static class DatabaseSeeder
                 today.AddDays(-14),
                 SourceActivityStatus.Hired,
                 today.AddDays(-2)));
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedReferralsAsync(
+        TalentLensDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (await dbContext.Referrals.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        var requisitions = await dbContext.Requisitions.ToDictionaryAsync(
+            requisition => requisition.RequisitionCode,
+            cancellationToken);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        dbContext.Referrals.AddRange(
+            new Referral(
+                requisitions["REQ-2026-001"].Id,
+                "Chinedu Eze",
+                "EMP-1042",
+                "Engineering",
+                "Morgan Lee",
+                "morgan.lee@example.com",
+                "+1-555-0101",
+                "https://example.com/resumes/morgan-lee.pdf",
+                "chinedu.eze@company.local",
+                "Chinedu Eze",
+                DateTimeOffset.UtcNow.AddMinutes(-18),
+                DateTimeOffset.UtcNow.AddMinutes(-15),
+                "Previously worked together",
+                "5 years",
+                "Candidate has strong backend engineering experience aligned with the role.",
+                today.AddDays(-20),
+                ReferralStatus.Screening,
+                ReferralHiringOutcome.Pending,
+                null),
+            new Referral(
+                requisitions["REQ-2026-004"].Id,
+                "Grace Patel",
+                "EMP-2209",
+                "People Analytics",
+                "Priya Menon",
+                "priya.menon@example.com",
+                "+1-555-0102",
+                "https://example.com/resumes/priya-menon.pdf",
+                "grace.patel@company.local",
+                "Grace Patel",
+                DateTimeOffset.UtcNow.AddMinutes(-25),
+                DateTimeOffset.UtcNow.AddMinutes(-21),
+                "Former colleague",
+                "3 years",
+                "Candidate has direct people analytics and reporting experience.",
+                today.AddDays(-14),
+                ReferralStatus.Hired,
+                ReferralHiringOutcome.Hired,
+                today.AddDays(-2)),
+            new Referral(
+                requisitions["REQ-2026-003"].Id,
+                "Daniel Cruz",
+                "EMP-3317",
+                "Sales",
+                "Taylor Brooks",
+                "taylor.brooks@example.com",
+                null,
+                "https://example.com/resumes/taylor-brooks.pdf",
+                "daniel.cruz@company.local",
+                "Daniel Cruz",
+                DateTimeOffset.UtcNow.AddMinutes(-35),
+                DateTimeOffset.UtcNow.AddMinutes(-31),
+                "Professional network",
+                "2 years",
+                "Candidate has sales management experience but was not aligned with territory needs.",
+                today.AddDays(-9),
+                ReferralStatus.Rejected,
+                ReferralHiringOutcome.NotHired,
+                null));
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }

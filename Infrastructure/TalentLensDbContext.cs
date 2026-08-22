@@ -6,12 +6,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace C_TalentLens.Infrastructure;
 
-public sealed class TalentLensDbContext(DbContextOptions<TalentLensDbContext> options)
+public class TalentLensDbContext(DbContextOptions<TalentLensDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<Requisition> Requisitions => Set<Requisition>();
 
     public DbSet<SourceActivity> SourceActivities => Set<SourceActivity>();
+
+    public DbSet<Referral> Referrals => Set<Referral>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +73,25 @@ public sealed class TalentLensDbContext(DbContextOptions<TalentLensDbContext> op
                 .HasConversion<string>()
                 .HasMaxLength(20)
                 .IsRequired();
+
+            entity.Property(requisition => requisition.OpeningReason)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(requisition => requisition.CustomOpeningReason)
+                .HasMaxLength(120);
+
+            entity.Property(requisition => requisition.PostingType)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(requisition => requisition.StatusComment)
+                .HasMaxLength(1000);
+
+            entity.Property(requisition => requisition.HiringManagerNotes)
+                .HasMaxLength(1000);
 
             entity.Property(requisition => requisition.CurrentStatus)
                 .HasConversion<string>()
@@ -178,8 +199,25 @@ public sealed class TalentLensDbContext(DbContextOptions<TalentLensDbContext> op
         {
             entity.HasKey(action => action.Id);
 
+            entity.Property(action => action.Title)
+                .HasMaxLength(160)
+                .IsRequired();
+
             entity.Property(action => action.Description)
                 .HasMaxLength(500)
+                .IsRequired();
+
+            entity.Property(action => action.Category)
+                .HasConversion<string>()
+                .HasMaxLength(40)
+                .IsRequired();
+
+            entity.Property(action => action.CustomCategory)
+                .HasMaxLength(120);
+
+            entity.Property(action => action.Priority)
+                .HasConversion<string>()
+                .HasMaxLength(20)
                 .IsRequired();
 
             entity.Property(action => action.Owner)
@@ -191,10 +229,59 @@ public sealed class TalentLensDbContext(DbContextOptions<TalentLensDbContext> op
                 .HasForeignKey(action => action.OwnerUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(action => action.CompletedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             entity.Property(action => action.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20)
                 .IsRequired();
+
+            entity.Property(action => action.CompletedBy)
+                .HasMaxLength(120);
+
+            entity.Property(action => action.CompletionNotes)
+                .HasMaxLength(1000);
+
+            entity.Ignore(action => action.IsOpen);
+
+            entity.Navigation(action => action.History)
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            entity.HasMany(action => action.History)
+                .WithOne()
+                .HasForeignKey(history => history.ActionItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ActionItemHistory>(entity =>
+        {
+            entity.HasKey(history => history.Id);
+
+            entity.Property(history => history.EventType)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(history => history.ChangedBy)
+                .HasMaxLength(120)
+                .IsRequired();
+
+            entity.Property(history => history.FromValue)
+                .HasMaxLength(160);
+
+            entity.Property(history => history.ToValue)
+                .HasMaxLength(160);
+
+            entity.Property(history => history.Notes)
+                .HasMaxLength(1000);
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(history => history.ChangedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<SourceActivity>(entity =>
@@ -225,6 +312,105 @@ public sealed class TalentLensDbContext(DbContextOptions<TalentLensDbContext> op
                 .WithMany()
                 .HasForeignKey(activity => activity.RequisitionId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Referral>(entity =>
+        {
+            entity.HasKey(referral => referral.Id);
+
+            entity.Property(referral => referral.ReferrerName)
+                .HasMaxLength(160)
+                .IsRequired();
+
+            entity.Property(referral => referral.ReferrerEmployeeId)
+                .HasMaxLength(40);
+
+            entity.Property(referral => referral.ReferrerDepartment)
+                .HasMaxLength(120)
+                .IsRequired();
+
+            entity.Property(referral => referral.CandidateName)
+                .HasMaxLength(160)
+                .IsRequired();
+
+            entity.Property(referral => referral.CandidateEmail)
+                .HasMaxLength(180)
+                .IsRequired();
+
+            entity.Property(referral => referral.CandidatePhoneNumber)
+                .HasMaxLength(40);
+
+            entity.Property(referral => referral.ResumeUrl)
+                .HasMaxLength(500);
+
+            entity.Property(referral => referral.SubmitterEmail)
+                .HasMaxLength(180);
+
+            entity.Property(referral => referral.SubmitterName)
+                .HasMaxLength(160);
+
+            entity.Property(referral => referral.CandidateRelationship)
+                .HasMaxLength(500);
+
+            entity.Property(referral => referral.CandidateKnownDuration)
+                .HasMaxLength(120);
+
+            entity.Property(referral => referral.CandidateAlignmentComment)
+                .HasMaxLength(1000);
+
+            entity.Property(referral => referral.Status)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(referral => referral.HiringOutcome)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Ignore(referral => referral.IsHire);
+            entity.Ignore(referral => referral.IsActive);
+
+            entity.Navigation(referral => referral.History)
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            entity.HasMany(referral => referral.History)
+                .WithOne()
+                .HasForeignKey(history => history.ReferralId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<Requisition>()
+                .WithMany()
+                .HasForeignKey(referral => referral.RequisitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReferralHistory>(entity =>
+        {
+            entity.HasKey(history => history.Id);
+
+            entity.Property(history => history.EventType)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(history => history.ChangedBy)
+                .HasMaxLength(120)
+                .IsRequired();
+
+            entity.Property(history => history.FromValue)
+                .HasMaxLength(160);
+
+            entity.Property(history => history.ToValue)
+                .HasMaxLength(160);
+
+            entity.Property(history => history.Notes)
+                .HasMaxLength(1000);
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(history => history.ChangedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

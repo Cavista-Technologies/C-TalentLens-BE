@@ -1,5 +1,5 @@
-
 using System.Text;
+using System.Text.Json.Serialization;
 using C_TalentLens.Application;
 using C_TalentLens.Application.Security;
 using C_TalentLens.Domain;
@@ -19,7 +19,11 @@ namespace C_TalentLens
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                });
             builder.Services.AddOpenApi();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(options =>
@@ -53,6 +57,20 @@ namespace C_TalentLens
             builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
             builder.Services.AddHealthChecks();
             builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+            builder.Services.AddCors(options =>
+            {
+                var allowedOrigins = builder.Configuration
+                    .GetSection("Cors:AllowedOrigins")
+                    .Get<string[]>() ?? [];
+
+                options.AddPolicy("Frontend", policy =>
+                {
+                    policy
+                        .WithOrigins(allowedOrigins)
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
 
             builder.Services.AddDbContext<TalentLensDbContext>(options =>
                 options.UseSqlite(builder.Configuration.GetConnectionString("TalentLens")));
@@ -137,7 +155,13 @@ namespace C_TalentLens
             }
 
             app.UseExceptionHandler();
-            app.UseHttpsRedirection();
+
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseHttpsRedirection();
+            }
+
+            app.UseCors("Frontend");
 
             app.UseAuthentication();
             app.UseAuthorization();

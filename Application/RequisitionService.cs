@@ -13,6 +13,8 @@ public interface IRequisitionService
 {
     Task<IReadOnlyCollection<RequisitionResponse>> ListAsync(AccessScope accessScope, RequisitionQuery query, CancellationToken cancellationToken);
 
+    Task<IReadOnlyCollection<PublicRequisitionResponse>> ListPublicOpenAsync(string? search, CancellationToken cancellationToken);
+
     Task<RequisitionResponse?> GetAsync(AccessScope accessScope, Guid id, CancellationToken cancellationToken);
 
     Task<RequisitionResponse> CreateAsync(CreateRequisitionRequest request, CancellationToken cancellationToken);
@@ -81,6 +83,29 @@ public class RequisitionService(
             .Where(accessScope.CanRead)
             .Where(requisition => MatchesQuery(requisition, query))
             .Select(requisition => RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyCollection<PublicRequisitionResponse>> ListPublicOpenAsync(
+        string? search,
+        CancellationToken cancellationToken)
+    {
+        var searchTerm = search?.Trim();
+        var requisitions = await dbContext.Requisitions
+            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed &&
+                                  requisition.CurrentStatus != RequisitionStatus.Cancelled)
+            .OrderBy(requisition => requisition.RoleName)
+            .ThenBy(requisition => requisition.RequisitionCode)
+            .ToListAsync(cancellationToken);
+
+        return requisitions
+            .Where(requisition => MatchesPublicSearch(requisition, searchTerm))
+            .Take(10)
+            .Select(requisition => new PublicRequisitionResponse(
+                requisition.Id,
+                requisition.RequisitionCode,
+                requisition.RoleName,
+                requisition.Department))
             .ToList();
     }
 
@@ -468,23 +493,48 @@ public class RequisitionService(
         return true;
     }
 
+    private static bool MatchesPublicSearch(Requisition requisition, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return true;
+        }
+
+        return new[]
+        {
+            requisition.RequisitionCode,
+            requisition.RoleName,
+            requisition.Department
+        }.Any(value => value.Contains(search, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static void GuardCanManageBottleneck(AccessScope accessScope, Requisition requisition, Bottleneck bottleneck)
     {
-        if (accessScope.CanRead(requisition) || bottleneck.OwnerUserId == accessScope.UserId)
+        if (!accessScope.CanRead(requisition))
+        {
+            throw new UnauthorizedAccessException("You do not have access to update this bottleneck.");
+        }
+
+        if (accessScope.CanManage(bottleneck))
         {
             return;
         }
 
-        throw new UnauthorizedAccessException("You do not have access to update this bottleneck.");
+        throw new UnauthorizedAccessException("Only the bottleneck owner or Talent Acquisition Manager can update this bottleneck.");
     }
 
     private static void GuardCanManageAction(AccessScope accessScope, Requisition requisition, ActionItem actionItem)
     {
-        if (accessScope.CanRead(requisition) || actionItem.OwnerUserId == accessScope.UserId)
+        if (!accessScope.CanRead(requisition))
+        {
+            throw new UnauthorizedAccessException("You do not have access to update this action.");
+        }
+
+        if (accessScope.CanManage(actionItem))
         {
             return;
         }
 
-        throw new UnauthorizedAccessException("You do not have access to update this action.");
+        throw new UnauthorizedAccessException("Only the action owner or Talent Acquisition Manager can update this action.");
     }
 }

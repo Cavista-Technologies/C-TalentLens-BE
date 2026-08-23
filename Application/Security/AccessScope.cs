@@ -13,6 +13,18 @@ public record AccessScope(Guid UserId, IReadOnlyCollection<string> Roles)
 
     public bool IsHiringManager => Roles.Contains(UserRole.HiringManager);
 
+    public bool CanManage(Bottleneck bottleneck)
+    {
+        return bottleneck.OwnerUserId == UserId ||
+               Roles.Contains(UserRole.TalentAcquisitionManager);
+    }
+
+    public bool CanManage(ActionItem actionItem)
+    {
+        return actionItem.OwnerUserId == UserId ||
+               Roles.Contains(UserRole.TalentAcquisitionManager);
+    }
+
     public static AccessScope FromPrincipal(ClaimsPrincipal principal)
     {
         var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);

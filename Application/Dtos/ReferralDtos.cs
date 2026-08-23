@@ -24,6 +24,19 @@ public record CreateReferralRequest(
     [MaxLength(120)] string? CandidateKnownDuration = null,
     [MaxLength(1000)] string? CandidateAlignmentComment = null);
 
+public record CreatePublicReferralRequest(
+    Guid RequisitionId,
+    [Required, MaxLength(160)] string ReferrerName,
+    [Required, EmailAddress, MaxLength(180)] string ReferrerEmail,
+    [Required, MaxLength(120)] string ReferrerDepartment,
+    [Required, MaxLength(160)] string CandidateName,
+    [Required, EmailAddress, MaxLength(180)] string CandidateEmail,
+    [MaxLength(40)] string? CandidatePhoneNumber = null,
+    [MaxLength(500)] string? ResumeUrl = null,
+    [MaxLength(500)] string? CandidateRelationship = null,
+    [MaxLength(120)] string? CandidateKnownDuration = null,
+    [MaxLength(1000)] string? CandidateAlignmentComment = null);
+
 public record ReferralQuery(
     Guid? RequisitionId,
     ReferralStatus? Status,

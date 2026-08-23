@@ -33,6 +33,10 @@ public interface IAnalyticsService
         CreateReferralRequest request,
         CancellationToken cancellationToken);
 
+    Task<ReferralResponse> CreatePublicReferralAsync(
+        CreatePublicReferralRequest request,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyCollection<ReferralResponse>> ListReferralsAsync(
         AccessScope accessScope,
         ReferralQuery query,
@@ -56,8 +60,13 @@ public interface IAnalyticsService
 
 public class AnalyticsService(
     TalentLensDbContext dbContext,
-    UserManager<ApplicationUser> userManager) : IAnalyticsService
+    UserManager<ApplicationUser> userManager,
+    IClock clock) : IAnalyticsService
 {
+    private const string PublicReferralActorEmail = "referral.portal@talentlens.local";
+    private const string PublicReferralActorName = "Referral Portal";
+    private const string PublicReferralEmailDomain = "@cavista.com";
+
     public async Task<SourceActivityResponse> CreateSourceActivityAsync(
         AccessScope accessScope,
         CreateSourceActivityRequest request,
@@ -231,34 +240,50 @@ public class AnalyticsService(
             throw new BadRequestException("Candidate email is required.", "candidate_email_required");
         }
 
-        var referral = new Referral(
+        var createdBy = await GetUserAsync(accessScope.UserId, "Referral creator", cancellationToken);
+
+        return await CreateReferralCoreAsync(requisition, request, createdBy.Id, createdBy.FullName, cancellationToken);
+    }
+
+    public async Task<ReferralResponse> CreatePublicReferralAsync(
+        CreatePublicReferralRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!request.ReferrerEmail.Trim().EndsWith(PublicReferralEmailDomain, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BadRequestException("Use your Cavista email address to submit a referral.", "invalid_referrer_email_domain");
+        }
+
+        var requisition = await QueryRequisitions()
+            .FirstOrDefaultAsync(item => item.Id == request.RequisitionId, cancellationToken);
+
+        if (requisition is null || requisition.IsClosed)
+        {
+            throw new BadRequestException("Requisition was not found.", "requisition_not_found");
+        }
+
+        var actor = await GetOrCreatePublicReferralActorAsync(cancellationToken);
+        var createRequest = new CreateReferralRequest(
             request.RequisitionId,
             request.ReferrerName,
-            request.ReferrerEmployeeId,
             request.ReferrerDepartment,
             request.CandidateName,
-            request.CandidateEmail,
-            request.CandidatePhoneNumber,
-            request.ResumeUrl,
-            request.SubmitterEmail,
-            request.SubmitterName,
-            request.FormStartedAt,
-            request.FormCompletedAt,
-            request.CandidateRelationship,
-            request.CandidateKnownDuration,
-            request.CandidateAlignmentComment,
-            request.SubmissionDate,
-            request.Status,
-            request.HiringOutcome,
-            request.HiredAt);
-        var createdBy = await GetUserAsync(accessScope.UserId, "Referral creator", cancellationToken);
-        var history = referral.RecordCreated(createdBy.Id, createdBy.FullName);
+            clock.Today,
+            ReferralStatus.Submitted,
+            ReferralHiringOutcome.Pending,
+            ReferrerEmployeeId: null,
+            CandidateEmail: request.CandidateEmail,
+            CandidatePhoneNumber: request.CandidatePhoneNumber,
+            ResumeUrl: request.ResumeUrl,
+            SubmitterEmail: request.ReferrerEmail,
+            SubmitterName: request.ReferrerName,
+            FormStartedAt: null,
+            FormCompletedAt: clock.UtcNow,
+            CandidateRelationship: request.CandidateRelationship,
+            CandidateKnownDuration: request.CandidateKnownDuration,
+            CandidateAlignmentComment: request.CandidateAlignmentComment);
 
-        dbContext.Referrals.Add(referral);
-        dbContext.Set<ReferralHistory>().Add(history);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return ToResponse(referral, requisition);
+        return await CreateReferralCoreAsync(requisition, createRequest, actor.Id, actor.FullName, cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<ReferralResponse>> ListReferralsAsync(
@@ -564,6 +589,69 @@ public class AnalyticsService(
         }
 
         return true;
+    }
+
+    private async Task<ReferralResponse> CreateReferralCoreAsync(
+        Requisition requisition,
+        CreateReferralRequest request,
+        Guid createdByUserId,
+        string createdBy,
+        CancellationToken cancellationToken)
+    {
+        var referral = new Referral(
+            request.RequisitionId,
+            request.ReferrerName,
+            request.ReferrerEmployeeId,
+            request.ReferrerDepartment,
+            request.CandidateName,
+            request.CandidateEmail!,
+            request.CandidatePhoneNumber,
+            request.ResumeUrl,
+            request.SubmitterEmail,
+            request.SubmitterName,
+            request.FormStartedAt,
+            request.FormCompletedAt,
+            request.CandidateRelationship,
+            request.CandidateKnownDuration,
+            request.CandidateAlignmentComment,
+            request.SubmissionDate,
+            request.Status,
+            request.HiringOutcome,
+            request.HiredAt);
+        var history = referral.RecordCreated(createdByUserId, createdBy);
+
+        dbContext.Referrals.Add(referral);
+        dbContext.Set<ReferralHistory>().Add(history);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToResponse(referral, requisition);
+    }
+
+    private async Task<ApplicationUser> GetOrCreatePublicReferralActorAsync(CancellationToken cancellationToken)
+    {
+        var user = await userManager.FindByEmailAsync(PublicReferralActorEmail);
+        if (user is not null)
+        {
+            return user;
+        }
+
+        user = new ApplicationUser
+        {
+            UserName = PublicReferralActorEmail,
+            Email = PublicReferralActorEmail,
+            EmailConfirmed = true,
+            FullName = PublicReferralActorName,
+            Department = "People Team",
+            ReportingLine = null
+        };
+        var created = await userManager.CreateAsync(user);
+        if (!created.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"Failed to create referral portal user: {string.Join(", ", created.Errors.Select(error => error.Description))}");
+        }
+
+        return user;
     }
 
     private async Task<ApplicationUser> GetUserAsync(Guid userId, string label, CancellationToken cancellationToken)

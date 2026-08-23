@@ -32,6 +32,12 @@ public record RequisitionResponse(
     IReadOnlyCollection<BottleneckResponse> Bottlenecks,
     IReadOnlyCollection<ActionItemResponse> ActionItems);
 
+public record PublicRequisitionResponse(
+    Guid Id,
+    string RequisitionCode,
+    string RoleName,
+    string Department);
+
 public record StageTransitionResponse(
     Guid Id,
     RequisitionStatus Status,

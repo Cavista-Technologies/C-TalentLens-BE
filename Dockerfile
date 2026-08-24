@@ -27,6 +27,8 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
+RUN mkdir -p /app/data && chown -R $APP_UID /app/data
+
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ConnectionStrings__TalentLens="Data Source=/app/data/TalentLens.db"
 ENTRYPOINT ["dotnet", "C-TalentLens.dll"]

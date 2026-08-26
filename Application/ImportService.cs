@@ -34,7 +34,7 @@ public class ImportService(
     {
         var actor = await GetUserAsync(accessScope.UserId, "Importer", cancellationToken);
         var requisitions = await dbContext.Requisitions
-            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Cancelled)
+            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .ToListAsync(cancellationToken);
         var visibleRequisitions = requisitions.Where(accessScope.CanRead).ToList();
         var existingReferrals = await dbContext.Referrals.ToListAsync(cancellationToken);
@@ -163,8 +163,16 @@ public class ImportService(
                 : row.RequisitionCode.Trim();
             var openingReason = ParseOpeningReason(row.ReasonForOpening);
             var postingType = ParsePostingType(row.InternalExternalPosting);
+            var team = ParseTeam(row.Team);
+            if (team is null)
+            {
+                errors.Add(new ImportRowErrorResponse(
+                    item.rowNumber,
+                    "invalid_team",
+                    $"Team '{row.Team}' is not valid."));
+                continue;
+            }
             var dateOpened = row.DateOpened ?? clock.Today;
-            var advertisementDate = row.AdvertisementDate ?? dateOpened;
             var existing = existingRequisitions.FirstOrDefault(requisition =>
                 string.Equals(requisition.RequisitionCode, code, StringComparison.OrdinalIgnoreCase));
 
@@ -173,24 +181,38 @@ public class ImportService(
                 var requisition = new Requisition(
                     code,
                     row.RoleName,
-                    row.Team,
+                    team.Value,
                     hiringManager.Id,
                     hiringManager.FullName,
                     recruiter.Id,
                     recruiter.FullName,
                     row.Priority,
                     dateOpened,
-                    advertisementDate,
                     Math.Max(row.HiringGoal, 1),
                     openingReason,
                     openingReason == RequisitionOpeningReason.Other ? row.ReasonForOpening : null,
                     postingType,
                     row.CommentOnStatus,
                     row.NotesFromHiringManager);
-                if (row.Status != RequisitionStatus.Open)
-                {
-                    requisition.MoveTo(row.Status);
-                }
+                requisition.UpdateDetails(
+                    requisition.RoleName,
+                    requisition.Department,
+                    requisition.HiringManagerUserId,
+                    requisition.HiringManager,
+                    requisition.RecruiterUserId,
+                    requisition.Recruiter,
+                    requisition.Priority,
+                    requisition.DateOpened,
+                    Math.Max(row.HiringGoal, 1),
+                    row.FilledGoal,
+                    row.Status,
+                    row.ClosedDate,
+                    openingReason,
+                    openingReason == RequisitionOpeningReason.Other ? row.ReasonForOpening : null,
+                    postingType,
+                    row.CommentOnStatus,
+                    row.NotesFromHiringManager);
+                requisition.MoveTo(row.Stage);
 
                 dbContext.Requisitions.Add(requisition);
                 existingRequisitions.Add(requisition);
@@ -219,22 +241,23 @@ public class ImportService(
 
             existing.UpdateDetails(
                 row.RoleName,
-                row.Team,
+                team.Value,
                 hiringManager.Id,
                 hiringManager.FullName,
                 recruiter.Id,
                 recruiter.FullName,
                 row.Priority,
                 dateOpened,
-                advertisementDate,
                 Math.Max(row.HiringGoal, 1),
                 row.FilledGoal,
+                row.Status,
+                row.ClosedDate,
                 openingReason,
                 openingReason == RequisitionOpeningReason.Other ? row.ReasonForOpening : null,
                 postingType,
                 row.CommentOnStatus,
                 row.NotesFromHiringManager);
-            existing.MoveTo(row.Status);
+            existing.MoveTo(row.Stage);
             importedIds.Add(existing.Id);
             updated++;
         }
@@ -330,6 +353,28 @@ public class ImportService(
             "both" => PostingType.InternalAndExternal,
             _ => PostingType.External
         };
+    }
+
+    private static RecruitmentTeam? ParseTeam(string value)
+    {
+        var normalized = Normalize(value);
+        foreach (var team in Enum.GetValues<RecruitmentTeam>())
+        {
+            if (Normalize(team.ToString()) == normalized)
+            {
+                return team;
+            }
+        }
+
+        return null;
+    }
+
+    private static string Normalize(string value)
+    {
+        return new string(value
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
     }
 
     private static string GenerateRequisitionCode(IReadOnlyCollection<Requisition> requisitions, int rowNumber)

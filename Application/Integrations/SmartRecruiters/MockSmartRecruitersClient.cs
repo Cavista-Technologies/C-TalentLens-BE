@@ -1,0 +1,23 @@
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+
+namespace C_TalentLens.Application.Integrations.SmartRecruiters;
+
+public class MockSmartRecruitersClient(IOptions<SmartRecruitersOptions> options) : ISmartRecruitersClient
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
+
+    public async Task<IReadOnlyCollection<SmartRecruitersJob>> GetJobsAsync(CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(options.Value.MockJobsFilePath);
+        var response = await JsonSerializer.DeserializeAsync<SmartRecruitersJobsResponse>(
+            stream,
+            JsonOptions,
+            cancellationToken);
+
+        return response?.Content ?? [];
+    }
+}

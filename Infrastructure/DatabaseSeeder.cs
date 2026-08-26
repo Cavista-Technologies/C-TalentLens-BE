@@ -84,7 +84,7 @@ public static class DatabaseSeeder
             userManager,
             "ife.daniels@talentlens.local",
             "Ife Daniels",
-            "People Analytics",
+            "People",
             "Taylor Morgan",
             UserRole.HiringManager);
 
@@ -168,21 +168,20 @@ public static class DatabaseSeeder
         var backendEngineer = new Requisition(
             "REQ-2026-001",
             "Senior Backend Engineer",
-            "Engineering",
+            RecruitmentTeam.Engineering,
             users["Ada Okafor"].Id,
             "Ada Okafor",
             users["Maya Chen"].Id,
             "Maya Chen",
             RequisitionPriority.High,
             today.AddDays(-34),
-            today.AddDays(-32),
             2,
             RequisitionOpeningReason.Expansion,
             null,
             PostingType.External,
             "Ongoing technical interviews; feedback pending from final interview panel.",
             "Primary Python, ML/AI experience, and strong distributed systems background preferred.");
-        backendEngineer.MoveTo(RequisitionStatus.Interviewing);
+        backendEngineer.MoveTo(PipelineStage.Interview);
         backendEngineer.AddBottleneck(
             "Hiring manager feedback delay after technical interview.",
             BottleneckCategory.HiringManagerDelay,
@@ -206,21 +205,20 @@ public static class DatabaseSeeder
         var productDesigner = new Requisition(
             "REQ-2026-002",
             "Product Designer",
-            "Product",
+            RecruitmentTeam.Product,
             users["James Wright"].Id,
             "James Wright",
             users["Noah Bello"].Id,
             "Noah Bello",
             RequisitionPriority.Medium,
             today.AddDays(-24),
-            today.AddDays(-23),
             1,
             RequisitionOpeningReason.Backfill,
             null,
             PostingType.External,
             "Offer approval pending compensation confirmation.",
             "Portfolio should show B2B SaaS and design systems experience.");
-        productDesigner.MoveTo(RequisitionStatus.OfferStage);
+        productDesigner.MoveTo(PipelineStage.RequestToHire);
         productDesigner.AddActionItem(
             "Confirm compensation range",
             "Confirm compensation range before offer approval.",
@@ -234,41 +232,38 @@ public static class DatabaseSeeder
         var salesManager = new Requisition(
             "REQ-2026-003",
             "Regional Sales Manager",
-            "Sales",
+            RecruitmentTeam.Sales,
             users["Priya Shah"].Id,
             "Priya Shah",
             users["Maya Chen"].Id,
             "Maya Chen",
             RequisitionPriority.Low,
             today.AddDays(-12),
-            today.AddDays(-10),
             3,
             RequisitionOpeningReason.Expansion,
             null,
             PostingType.InternalAndExternal,
             "Screening active candidates from referrals and direct applications.",
             "Prior enterprise sales leadership experience is important.");
-        salesManager.MoveTo(RequisitionStatus.Screening);
+        salesManager.MoveTo(PipelineStage.PipeliningSourcing);
 
         var dataAnalyst = new Requisition(
             "REQ-2026-004",
             "Data Analyst",
-            "People Analytics",
+            RecruitmentTeam.People,
             users["Ife Daniels"].Id,
             "Ife Daniels",
             users["Noah Bello"].Id,
             "Noah Bello",
             RequisitionPriority.High,
             today.AddDays(-18),
-            today.AddDays(-17),
             1,
             RequisitionOpeningReason.Backfill,
             null,
             PostingType.Internal,
             "Candidate selected and offer accepted.",
             "Internal mobility candidates preferred due to People Analytics context.");
-        dataAnalyst.MoveTo(RequisitionStatus.OfferExtended, today.AddDays(-2));
-        dataAnalyst.MoveTo(RequisitionStatus.Closed, today.AddDays(-1));
+        dataAnalyst.MoveTo(PipelineStage.OfferedHired, today.AddDays(-2));
         dataAnalyst.UpdateDetails(
             dataAnalyst.RoleName,
             dataAnalyst.Department,
@@ -278,9 +273,10 @@ public static class DatabaseSeeder
             dataAnalyst.Recruiter,
             dataAnalyst.Priority,
             dataAnalyst.DateOpened,
-            dataAnalyst.AdvertisementDate,
             1,
             1,
+            RequisitionStatus.Closed,
+            today.AddDays(-1),
             RequisitionOpeningReason.Backfill,
             null,
             PostingType.Internal,

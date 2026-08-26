@@ -48,6 +48,7 @@ public class TalentLensDbContext(DbContextOptions<TalentLensDbContext> options)
                 .IsRequired();
 
             entity.Property(requisition => requisition.Department)
+                .HasConversion<string>()
                 .HasMaxLength(120)
                 .IsRequired();
 
@@ -97,6 +98,21 @@ public class TalentLensDbContext(DbContextOptions<TalentLensDbContext> options)
                 .HasConversion<string>()
                 .HasMaxLength(30)
                 .IsRequired();
+
+            entity.Property(requisition => requisition.CurrentStage)
+                .HasConversion<string>()
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(requisition => requisition.ExternalSource)
+                .HasMaxLength(80);
+
+            entity.Property(requisition => requisition.ExternalId)
+                .HasMaxLength(120);
+
+            entity.HasIndex(requisition => new { requisition.ExternalSource, requisition.ExternalId })
+                .IsUnique()
+                .HasFilter("\"ExternalSource\" IS NOT NULL AND \"ExternalId\" IS NOT NULL");
 
             entity.Navigation(requisition => requisition.StageHistory)
                 .UsePropertyAccessMode(PropertyAccessMode.Field);

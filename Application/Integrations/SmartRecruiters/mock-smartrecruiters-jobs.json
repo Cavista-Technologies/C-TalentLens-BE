@@ -1,0 +1,36 @@
+{
+  "content": [
+    {
+      "id": "sr-job-1001",
+      "title": "Senior Platform Engineer",
+      "department": "Engineering",
+      "status": "Active",
+      "createdOn": "2026-08-19",
+      "openings": 2
+    },
+    {
+      "id": "sr-job-1002",
+      "title": "Product Operations Analyst",
+      "department": "Product",
+      "status": "Active",
+      "createdOn": "2026-08-20",
+      "openings": 1
+    },
+    {
+      "id": "sr-job-1003",
+      "title": "Client Success Manager",
+      "department": "ClientExperience",
+      "status": "Active",
+      "createdOn": "2026-08-21",
+      "openings": 1
+    },
+    {
+      "id": "sr-job-1004",
+      "title": "People Systems Specialist",
+      "department": "People",
+      "status": "Hold",
+      "createdOn": "2026-08-22",
+      "openings": 1
+    }
+  ]
+}

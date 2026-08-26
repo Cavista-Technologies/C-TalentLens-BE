@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using C_TalentLens.Application;
+using C_TalentLens.Application.Integrations.SmartRecruiters;
 using C_TalentLens.Application.Security;
 using C_TalentLens.Domain;
 using C_TalentLens.Infrastructure;
@@ -30,7 +31,7 @@ namespace C_TalentLens
             {
                 options.SwaggerDoc("v1", new OpenApiInfo
                 {
-                    Title = "TalentLens API",
+                    Title = "C-TalentLens API",
                     Version = "v1",
                     Description = "Backend API for requisition tracking, recruitment analytics, risk scoring, alerts, referrals, and leadership reporting."
                 });
@@ -135,6 +136,9 @@ namespace C_TalentLens
             builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
             builder.Services.AddScoped<ILeadershipSummaryService, LeadershipSummaryService>();
             builder.Services.AddScoped<IImportService, ImportService>();
+            builder.Services.Configure<SmartRecruitersOptions>(builder.Configuration.GetSection("SmartRecruiters"));
+            builder.Services.AddScoped<ISmartRecruitersClient, MockSmartRecruitersClient>();
+            builder.Services.AddScoped<ISmartRecruitersSyncService, SmartRecruitersSyncService>();
 
             var app = builder.Build();
 
@@ -144,9 +148,9 @@ namespace C_TalentLens
                 app.UseSwagger();
                 app.UseSwaggerUI(options =>
                 {
-                    options.SwaggerEndpoint("/swagger/v1/swagger.json", "TalentLens API v1");
+                    options.SwaggerEndpoint("/swagger/v1/swagger.json", "C-TalentLens API v1");
                     options.RoutePrefix = "swagger";
-                    options.DocumentTitle = "TalentLens API";
+                    options.DocumentTitle = "C-TalentLens API";
                 });
             }
             else

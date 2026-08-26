@@ -48,7 +48,8 @@ public record RequisitionImportRowRequest(
     [EmailAddress, MaxLength(180)] string? RecruiterEmail,
     RequisitionPriority Priority = RequisitionPriority.Medium,
     DateOnly? DateOpened = null,
-    DateOnly? AdvertisementDate = null,
+    DateOnly? ClosedDate = null,
     int HiringGoal = 1,
     int FilledGoal = 0,
-    RequisitionStatus Status = RequisitionStatus.Open);
+    RequisitionStatus Status = RequisitionStatus.Active,
+    PipelineStage Stage = PipelineStage.JobPosting);

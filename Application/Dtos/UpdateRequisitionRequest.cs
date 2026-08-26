@@ -5,14 +5,15 @@ namespace C_TalentLens.Application.Dtos;
 
 public record UpdateRequisitionRequest(
     [Required, MaxLength(160)] string RoleName,
-    [Required, MaxLength(120)] string Department,
+    RecruitmentTeam Department,
     Guid HiringManagerUserId,
     Guid RecruiterUserId,
     RequisitionPriority Priority,
     DateOnly DateOpened,
-    DateOnly AdvertisementDate,
     [Range(1, 1000)] int HiringGoal,
     [Range(0, 1000)] int FilledGoal,
+    RequisitionStatus CurrentStatus = RequisitionStatus.Active,
+    DateOnly? ClosedDate = null,
     RequisitionOpeningReason OpeningReason = RequisitionOpeningReason.Other,
     [MaxLength(120)] string? CustomOpeningReason = null,
     PostingType PostingType = PostingType.External,

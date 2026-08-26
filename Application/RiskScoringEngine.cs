@@ -36,6 +36,7 @@ public class RiskScoringEngine : IRiskScoringEngine
             requisition.Recruiter,
             requisition.Priority,
             requisition.CurrentStatus,
+            requisition.CurrentStage,
             riskScore,
             ToRiskLevel(riskScore),
             daysOpen,

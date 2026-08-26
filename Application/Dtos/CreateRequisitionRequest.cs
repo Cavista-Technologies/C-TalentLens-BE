@@ -6,12 +6,11 @@ namespace C_TalentLens.Application.Dtos;
 public record CreateRequisitionRequest(
     [Required, MaxLength(40)] string RequisitionCode,
     [Required, MaxLength(160)] string RoleName,
-    [Required, MaxLength(120)] string Department,
+    RecruitmentTeam Department,
     Guid HiringManagerUserId,
     Guid RecruiterUserId,
     RequisitionPriority Priority,
     DateOnly DateOpened,
-    DateOnly AdvertisementDate,
     [Range(1, 1000)] int HiringGoal,
     RequisitionOpeningReason OpeningReason = RequisitionOpeningReason.Other,
     [MaxLength(120)] string? CustomOpeningReason = null,

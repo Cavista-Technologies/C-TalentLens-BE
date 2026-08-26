@@ -13,14 +13,13 @@ public class Requisition
     public Requisition(
         string requisitionCode,
         string roleName,
-        string department,
+        RecruitmentTeam department,
         Guid hiringManagerUserId,
         string hiringManager,
         Guid recruiterUserId,
         string recruiter,
         RequisitionPriority priority,
         DateOnly dateOpened,
-        DateOnly advertisementDate,
         int hiringGoal,
         RequisitionOpeningReason openingReason = RequisitionOpeningReason.Other,
         string? customOpeningReason = null,
@@ -31,14 +30,13 @@ public class Requisition
         Id = Guid.NewGuid();
         RequisitionCode = DomainGuard.Required(requisitionCode, nameof(requisitionCode));
         RoleName = DomainGuard.Required(roleName, nameof(roleName));
-        Department = DomainGuard.Required(department, nameof(department));
+        Department = DomainGuard.RequiredEnum(department, nameof(department));
         HiringManagerUserId = DomainGuard.RequiredId(hiringManagerUserId, nameof(hiringManagerUserId), "User id is required.");
         HiringManager = DomainGuard.Required(hiringManager, nameof(hiringManager));
         RecruiterUserId = DomainGuard.RequiredId(recruiterUserId, nameof(recruiterUserId), "User id is required.");
         Recruiter = DomainGuard.Required(recruiter, nameof(recruiter));
         Priority = priority;
         DateOpened = dateOpened;
-        AdvertisementDate = advertisementDate;
         HiringGoal = DomainGuard.NonNegative(hiringGoal, nameof(hiringGoal));
         OpeningReason = openingReason;
         CustomOpeningReason = DomainGuard.Optional(customOpeningReason);
@@ -46,11 +44,12 @@ public class Requisition
         StatusComment = DomainGuard.Optional(statusComment);
         HiringManagerNotes = DomainGuard.Optional(hiringManagerNotes);
         FilledGoal = 0;
-        CurrentStatus = RequisitionStatus.Open;
+        CurrentStatus = RequisitionStatus.Active;
+        CurrentStage = PipelineStage.JobPosting;
         CreatedAt = DateTimeOffset.UtcNow;
         UpdatedAt = CreatedAt;
 
-        _stageHistory.Add(StageTransition.Start(Id, RequisitionStatus.Open, CreatedAt));
+        _stageHistory.Add(StageTransition.Start(Id, CurrentStage, CreatedAt));
     }
 
     public Guid Id { get; private set; }
@@ -59,7 +58,7 @@ public class Requisition
 
     public string RoleName { get; private set; } = string.Empty;
 
-    public string Department { get; private set; } = string.Empty;
+    public RecruitmentTeam Department { get; private set; }
 
     public Guid HiringManagerUserId { get; private set; }
 
@@ -72,8 +71,6 @@ public class Requisition
     public RequisitionPriority Priority { get; private set; }
 
     public DateOnly DateOpened { get; private set; }
-
-    public DateOnly AdvertisementDate { get; private set; }
 
     public int HiringGoal { get; private set; }
 
@@ -91,9 +88,15 @@ public class Requisition
 
     public RequisitionStatus CurrentStatus { get; private set; }
 
+    public PipelineStage CurrentStage { get; private set; }
+
     public DateOnly? OfferExtendedDate { get; private set; }
 
     public DateOnly? ClosedDate { get; private set; }
+
+    public string? ExternalSource { get; private set; }
+
+    public string? ExternalId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -107,12 +110,12 @@ public class Requisition
 
     public int RemainingGoal => Math.Max(HiringGoal - FilledGoal, 0);
 
-    public bool IsClosed => CurrentStatus is RequisitionStatus.Closed or RequisitionStatus.Cancelled;
+    public bool IsClosed => CurrentStatus is RequisitionStatus.Closed;
 
     public int DaysOpen(DateOnly today)
     {
-        var endDate = OfferExtendedDate ?? ClosedDate ?? today;
-        return Math.Max(endDate.DayNumber - AdvertisementDate.DayNumber, 0);
+        var endDate = ClosedDate ?? today;
+        return Math.Max(endDate.DayNumber - DateOpened.DayNumber, 0);
     }
 
     public SlaState GetSlaState(DateOnly today)
@@ -143,16 +146,17 @@ public class Requisition
 
     public void UpdateDetails(
         string roleName,
-        string department,
+        RecruitmentTeam department,
         Guid hiringManagerUserId,
         string hiringManager,
         Guid recruiterUserId,
         string recruiter,
         RequisitionPriority priority,
         DateOnly dateOpened,
-        DateOnly advertisementDate,
         int hiringGoal,
         int filledGoal,
+        RequisitionStatus currentStatus,
+        DateOnly? closedDate,
         RequisitionOpeningReason openingReason = RequisitionOpeningReason.Other,
         string? customOpeningReason = null,
         PostingType postingType = PostingType.External,
@@ -160,16 +164,16 @@ public class Requisition
         string? hiringManagerNotes = null)
     {
         RoleName = DomainGuard.Required(roleName, nameof(roleName));
-        Department = DomainGuard.Required(department, nameof(department));
+        Department = DomainGuard.RequiredEnum(department, nameof(department));
         HiringManagerUserId = DomainGuard.RequiredId(hiringManagerUserId, nameof(hiringManagerUserId), "User id is required.");
         HiringManager = DomainGuard.Required(hiringManager, nameof(hiringManager));
         RecruiterUserId = DomainGuard.RequiredId(recruiterUserId, nameof(recruiterUserId), "User id is required.");
         Recruiter = DomainGuard.Required(recruiter, nameof(recruiter));
         Priority = priority;
         DateOpened = dateOpened;
-        AdvertisementDate = advertisementDate;
         HiringGoal = DomainGuard.NonNegative(hiringGoal, nameof(hiringGoal));
         FilledGoal = DomainGuard.NonNegative(filledGoal, nameof(filledGoal));
+        SetStatus(currentStatus, closedDate);
         OpeningReason = openingReason;
         CustomOpeningReason = DomainGuard.Optional(customOpeningReason);
         PostingType = postingType;
@@ -184,9 +188,23 @@ public class Requisition
         MarkAsUpdated();
     }
 
-    public void MoveTo(RequisitionStatus status, DateOnly? effectiveDate = null)
+    public void ReassignRecruiter(Guid recruiterUserId, string recruiter)
     {
-        if (CurrentStatus == status)
+        RecruiterUserId = DomainGuard.RequiredId(recruiterUserId, nameof(recruiterUserId), "User id is required.");
+        Recruiter = DomainGuard.Required(recruiter, nameof(recruiter));
+        MarkAsUpdated();
+    }
+
+    public void SetExternalReference(string externalSource, string externalId)
+    {
+        ExternalSource = DomainGuard.Required(externalSource, nameof(externalSource));
+        ExternalId = DomainGuard.Required(externalId, nameof(externalId));
+        MarkAsUpdated();
+    }
+
+    public void MoveTo(PipelineStage stage, DateOnly? effectiveDate = null)
+    {
+        if (CurrentStage == stage)
         {
             return;
         }
@@ -195,20 +213,28 @@ public class Requisition
         var openStage = _stageHistory.FirstOrDefault(stage => stage.ExitedAt is null);
         openStage?.Close(now);
 
-        CurrentStatus = status;
+        CurrentStage = stage;
 
-        if (status == RequisitionStatus.OfferExtended)
+        if (stage == PipelineStage.OfferedHired)
         {
             OfferExtendedDate = effectiveDate ?? DateOnly.FromDateTime(now.UtcDateTime);
         }
 
-        if (status is RequisitionStatus.Closed or RequisitionStatus.Cancelled)
+        _stageHistory.Add(StageTransition.Start(Id, stage, now));
+        MarkAsUpdated(now);
+    }
+
+    private void SetStatus(RequisitionStatus status, DateOnly? closedDate)
+    {
+        CurrentStatus = status;
+
+        if (status is RequisitionStatus.Closed)
         {
-            ClosedDate = effectiveDate ?? DateOnly.FromDateTime(now.UtcDateTime);
+            ClosedDate = closedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+            return;
         }
 
-        _stageHistory.Add(StageTransition.Start(Id, status, now));
-        MarkAsUpdated(now);
+        ClosedDate = null;
     }
 
     public Bottleneck AddBottleneck(

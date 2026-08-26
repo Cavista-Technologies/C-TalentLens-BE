@@ -17,11 +17,12 @@ public class RequisitionsController(IRequisitionService requisitions) : Controll
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         [FromQuery] string? search = null,
-        [FromQuery] string? department = null,
+        [FromQuery] C_TalentLens.Domain.RecruitmentTeam? department = null,
         [FromQuery] Guid? recruiterUserId = null,
         [FromQuery] Guid? hiringManagerUserId = null,
         [FromQuery] C_TalentLens.Domain.RequisitionPriority? priority = null,
         [FromQuery] C_TalentLens.Domain.RequisitionStatus? status = null,
+        [FromQuery] C_TalentLens.Domain.PipelineStage? stage = null,
         [FromQuery] bool? openOnly = null,
         [FromQuery] bool? closedOnly = null,
         [FromQuery] bool? nearSlaBreach = null,
@@ -35,6 +36,7 @@ public class RequisitionsController(IRequisitionService requisitions) : Controll
             hiringManagerUserId,
             priority,
             status,
+            stage,
             openOnly,
             closedOnly,
             nearSlaBreach,
@@ -79,16 +81,34 @@ public class RequisitionsController(IRequisitionService requisitions) : Controll
         return response is null ? NotFound() : Ok(response);
     }
 
-    [HttpPatch("{id:guid}/status")]
+    [HttpPatch("{id:guid}/stage")]
     [Authorize(Policy = "RecruitmentWrite")]
     [ProducesResponseType<RequisitionResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<RequisitionResponse>> UpdateStatus(
+    public async Task<ActionResult<RequisitionResponse>> UpdateStage(
         Guid id,
-        UpdateRequisitionStatusRequest request,
+        UpdateRequisitionStageRequest request,
         CancellationToken cancellationToken)
     {
-        var response = await requisitions.UpdateStatusAsync(id, request, cancellationToken);
+        var response = await requisitions.UpdateStageAsync(id, request, cancellationToken);
+        return response is null ? NotFound() : Ok(response);
+    }
+
+    [HttpPatch("{id:guid}/recruiter")]
+    [Authorize]
+    [ProducesResponseType<RequisitionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<RequisitionResponse>> ReassignRecruiter(
+        Guid id,
+        ReassignRequisitionRecruiterRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await requisitions.ReassignRecruiterAsync(
+            id,
+            AccessScope.FromPrincipal(User),
+            request,
+            cancellationToken);
         return response is null ? NotFound() : Ok(response);
     }
 

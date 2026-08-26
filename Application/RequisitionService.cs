@@ -21,7 +21,13 @@ public interface IRequisitionService
 
     Task<RequisitionResponse?> UpdateAsync(Guid id, UpdateRequisitionRequest request, CancellationToken cancellationToken);
 
-    Task<RequisitionResponse?> UpdateStatusAsync(Guid id, UpdateRequisitionStatusRequest request, CancellationToken cancellationToken);
+    Task<RequisitionResponse?> UpdateStageAsync(Guid id, UpdateRequisitionStageRequest request, CancellationToken cancellationToken);
+
+    Task<RequisitionResponse?> ReassignRecruiterAsync(
+        Guid id,
+        AccessScope accessScope,
+        ReassignRequisitionRecruiterRequest request,
+        CancellationToken cancellationToken);
 
     Task<BottleneckResponse?> AddBottleneckAsync(Guid id, CreateBottleneckRequest request, CancellationToken cancellationToken);
 
@@ -76,7 +82,7 @@ public class RequisitionService(
         var requisitions = await Query()
             .OrderBy(requisition => requisition.CurrentStatus == RequisitionStatus.Closed)
             .ThenBy(requisition => requisition.Priority)
-            .ThenBy(requisition => requisition.AdvertisementDate)
+            .ThenBy(requisition => requisition.DateOpened)
             .ToListAsync(cancellationToken);
 
         return requisitions
@@ -92,8 +98,7 @@ public class RequisitionService(
     {
         var searchTerm = search?.Trim();
         var requisitions = await dbContext.Requisitions
-            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed &&
-                                  requisition.CurrentStatus != RequisitionStatus.Cancelled)
+            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .OrderBy(requisition => requisition.RoleName)
             .ThenBy(requisition => requisition.RequisitionCode)
             .ToListAsync(cancellationToken);
@@ -140,7 +145,6 @@ public class RequisitionService(
             recruiter.FullName,
             request.Priority,
             request.DateOpened,
-            request.AdvertisementDate,
             request.HiringGoal,
             request.OpeningReason,
             request.CustomOpeningReason,
@@ -179,9 +183,10 @@ public class RequisitionService(
             recruiter.FullName,
             request.Priority,
             request.DateOpened,
-            request.AdvertisementDate,
             request.HiringGoal,
             request.FilledGoal,
+            request.CurrentStatus,
+            request.ClosedDate,
             request.OpeningReason,
             request.CustomOpeningReason,
             request.PostingType,
@@ -193,7 +198,7 @@ public class RequisitionService(
         return RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays);
     }
 
-    public async Task<RequisitionResponse?> UpdateStatusAsync(Guid id, UpdateRequisitionStatusRequest request, CancellationToken cancellationToken)
+    public async Task<RequisitionResponse?> UpdateStageAsync(Guid id, UpdateRequisitionStageRequest request, CancellationToken cancellationToken)
     {
         var requisition = await Query().FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (requisition is null)
@@ -201,7 +206,37 @@ public class RequisitionService(
             return null;
         }
 
-        requisition.MoveTo(request.Status, request.EffectiveDate);
+        requisition.MoveTo(request.Stage, request.EffectiveDate);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays);
+    }
+
+    public async Task<RequisitionResponse?> ReassignRecruiterAsync(
+        Guid id,
+        AccessScope accessScope,
+        ReassignRequisitionRecruiterRequest request,
+        CancellationToken cancellationToken)
+    {
+        var requisition = await Query().FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (requisition is null)
+        {
+            return null;
+        }
+
+        if (!accessScope.Roles.Contains(UserRole.TalentAcquisitionManager))
+        {
+            throw new UnauthorizedAccessException("Only Talent Acquisition Managers can reassign this requisition recruiter.");
+        }
+
+        var recruiter = await GetUserAsync(request.RecruiterUserId, "Recruiter", cancellationToken);
+        if (!await userManager.IsInRoleAsync(recruiter, UserRole.Recruiter) &&
+            !await userManager.IsInRoleAsync(recruiter, UserRole.TalentAcquisitionManager))
+        {
+            throw new BadRequestException("Selected user is not a recruiter.", "invalid_recruiter");
+        }
+
+        requisition.ReassignRecruiter(recruiter.Id, recruiter.FullName);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays);
@@ -436,7 +471,7 @@ public class RequisitionService(
             {
                 requisition.RequisitionCode,
                 requisition.RoleName,
-                requisition.Department,
+                requisition.Department.ToString(),
                 requisition.Recruiter,
                 requisition.HiringManager
             }.Any(value => value.Contains(query.Search, StringComparison.OrdinalIgnoreCase)))
@@ -444,8 +479,7 @@ public class RequisitionService(
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(query.Department) &&
-            !string.Equals(requisition.Department, query.Department, StringComparison.OrdinalIgnoreCase))
+        if (query.Department is not null && requisition.Department != query.Department)
         {
             return false;
         }
@@ -466,6 +500,11 @@ public class RequisitionService(
         }
 
         if (query.Status is not null && requisition.CurrentStatus != query.Status)
+        {
+            return false;
+        }
+
+        if (query.Stage is not null && requisition.CurrentStage != query.Stage)
         {
             return false;
         }
@@ -504,7 +543,7 @@ public class RequisitionService(
         {
             requisition.RequisitionCode,
             requisition.RoleName,
-            requisition.Department
+            requisition.Department.ToString()
         }.Any(value => value.Contains(search, StringComparison.OrdinalIgnoreCase));
     }
 

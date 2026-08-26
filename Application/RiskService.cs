@@ -26,8 +26,7 @@ public class RiskService(
     public async Task<IReadOnlyCollection<RiskAssessmentResponse>> ListAsync(AccessScope accessScope, CancellationToken cancellationToken)
     {
         var requisitions = await Query()
-            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed &&
-                                  requisition.CurrentStatus != RequisitionStatus.Cancelled)
+            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .ToListAsync(cancellationToken);
 
         return requisitions
@@ -44,8 +43,7 @@ public class RiskService(
         CancellationToken cancellationToken)
     {
         var requisitions = await Query()
-            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed &&
-                                  requisition.CurrentStatus != RequisitionStatus.Cancelled)
+            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .ToListAsync(cancellationToken);
 
         var rows = requisitions
@@ -72,11 +70,11 @@ public class RiskService(
                 criticalRiskRoles,
                 Average(assessments.Select(assessment => assessment.RiskScore))),
             new RiskDistributionResponse(lowRiskRoles, mediumRiskRoles, highRiskRoles, criticalRiskRoles),
-            BreakDownBy(rows, row => row.Requisition.Department),
+            BreakDownBy(rows, row => row.Requisition.Department.ToString()),
             BreakDownBy(rows, row => row.Requisition.Recruiter),
             BreakDownBy(rows, row => row.Requisition.HiringManager),
             BreakDownBy(rows, row => row.Requisition.Priority.ToString()),
-            BreakDownBy(rows, row => row.Requisition.Department),
+            BreakDownBy(rows, row => row.Requisition.Department.ToString()),
             TopRiskDrivers(assessments),
             HighRiskRequisitions(rows),
             TrendAnalysis(rows));
@@ -97,8 +95,7 @@ public class RiskService(
 
     private static bool Matches(RiskDashboardQuery query, Requisition requisition)
     {
-        return (string.IsNullOrWhiteSpace(query.Department) ||
-                requisition.Department.Equals(query.Department.Trim(), StringComparison.OrdinalIgnoreCase)) &&
+        return (query.Department is null || requisition.Department == query.Department) &&
                (query.RecruiterUserId is null || requisition.RecruiterUserId == query.RecruiterUserId) &&
                (query.HiringManagerUserId is null || requisition.HiringManagerUserId == query.HiringManagerUserId) &&
                (query.Priority is null || requisition.Priority == query.Priority) &&

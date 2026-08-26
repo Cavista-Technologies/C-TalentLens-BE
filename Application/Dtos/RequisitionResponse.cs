@@ -6,14 +6,13 @@ public record RequisitionResponse(
     Guid Id,
     string RequisitionCode,
     string RoleName,
-    string Department,
+    RecruitmentTeam Department,
     Guid HiringManagerUserId,
     string HiringManager,
     Guid RecruiterUserId,
     string Recruiter,
     RequisitionPriority Priority,
     DateOnly DateOpened,
-    DateOnly AdvertisementDate,
     int HiringGoal,
     RequisitionOpeningReason OpeningReason,
     string? CustomOpeningReason,
@@ -23,6 +22,7 @@ public record RequisitionResponse(
     int FilledGoal,
     int RemainingGoal,
     RequisitionStatus CurrentStatus,
+    PipelineStage CurrentStage,
     DateOnly? OfferExtendedDate,
     DateOnly? ClosedDate,
     int DaysOpen,
@@ -36,11 +36,14 @@ public record PublicRequisitionResponse(
     Guid Id,
     string RequisitionCode,
     string RoleName,
-    string Department);
+    RecruitmentTeam Department);
+
+public record ReassignRequisitionRecruiterRequest(
+    Guid RecruiterUserId);
 
 public record StageTransitionResponse(
     Guid Id,
-    RequisitionStatus Status,
+    PipelineStage Status,
     DateTimeOffset EnteredAt,
     DateTimeOffset? ExitedAt,
     int DaysInStage);

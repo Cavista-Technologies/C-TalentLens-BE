@@ -576,6 +576,16 @@ public class AnalyticsService(
             return false;
         }
 
+        if (query.SubmittedFrom is not null && record.referral.SubmissionDate < query.SubmittedFrom)
+        {
+            return false;
+        }
+
+        if (query.SubmittedTo is not null && record.referral.SubmissionDate > query.SubmittedTo)
+        {
+            return false;
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search) && !new[]
             {
                 record.referral.ReferrerName,

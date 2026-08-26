@@ -37,7 +37,7 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
         var timeToFill = new TimeToFillDashboardResponse(
             AverageDays(closed),
             GroupAverage(scoped, requisition => requisition.Recruiter),
-            GroupAverage(scoped, requisition => requisition.Department),
+            GroupAverage(scoped, requisition => requisition.Department.ToString()),
             GroupAverage(scoped, requisition => requisition.Priority.ToString()));
 
         var slaCompliance = BuildSlaComplianceDashboard(active);
@@ -49,6 +49,7 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
                 requisition.RoleName,
                 requisition.Recruiter,
                 requisition.CurrentStatus,
+                requisition.CurrentStage,
                 requisition.DaysOpen(clock.Today),
                 requisition.GetSlaState(clock.Today),
                 requisition.IsStalled(clock.UtcNow, RecruitmentRules.StaleAfterDays),
@@ -84,12 +85,12 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
     {
         var trackedStages = new[]
         {
-            RequisitionStatus.Sourcing,
-            RequisitionStatus.Screening,
-            RequisitionStatus.Interviewing,
-            RequisitionStatus.OfferStage,
-            RequisitionStatus.OfferExtended,
-            RequisitionStatus.Closed
+            PipelineStage.JobPosting,
+            PipelineStage.PipeliningSourcing,
+            PipelineStage.SparkHire,
+            PipelineStage.Interview,
+            PipelineStage.RequestToHire,
+            PipelineStage.OfferedHired
         };
 
         var stageMetrics = trackedStages
@@ -104,7 +105,7 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
                         requisition.Id,
                         requisition.RequisitionCode,
                         requisition.RoleName,
-                        requisition.Department,
+                        requisition.Department.ToString(),
                         requisition.Recruiter,
                         requisition.HiringManager,
                         requisition.Priority,
@@ -114,10 +115,12 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
             .ToList();
 
         return new PipelineDashboardResponse(
-            CountStage(requisitions, RequisitionStatus.Sourcing),
-            CountStage(requisitions, RequisitionStatus.Screening),
-            CountStage(requisitions, RequisitionStatus.Interviewing),
-            CountStage(requisitions, RequisitionStatus.OfferStage) + CountStage(requisitions, RequisitionStatus.OfferExtended),
+            CountStage(requisitions, PipelineStage.JobPosting),
+            CountStage(requisitions, PipelineStage.PipeliningSourcing),
+            CountStage(requisitions, PipelineStage.SparkHire),
+            CountStage(requisitions, PipelineStage.Interview),
+            CountStage(requisitions, PipelineStage.RequestToHire),
+            CountStage(requisitions, PipelineStage.OfferedHired),
             requisitions.Count(IsFilled),
             stageMetrics);
     }
@@ -215,7 +218,7 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
                                      item.bottleneck.Priority is BottleneckPriority.High or BottleneckPriority.Critical ||
                                      item.requisition.GetSlaState(clock.Today) != SlaState.OnTrack),
             CountBy(unresolved, item => item.requisition.Recruiter),
-            CountBy(unresolved, item => item.requisition.Department),
+            CountBy(unresolved, item => item.requisition.Department.ToString()),
             CountBy(unresolved, item => DisplayCategory(item.bottleneck)),
             CountBy(unresolved, item => item.bottleneck.Priority.ToString()),
             CountBy(unresolved, item => item.bottleneck.Status.ToString()),
@@ -276,13 +279,13 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
             open.Count(item => item.Action.Category == ActionItemCategory.CandidateFollowUp),
             open.Count(item => item.Action.Category == ActionItemCategory.HiringManagerFeedback),
             CountBy(open, item => item.Requisition.Recruiter),
-            CountBy(open, item => item.Requisition.Department),
+            CountBy(open, item => item.Requisition.Department.ToString()),
             CountBy(open, item => item.Action.Owner),
             CountBy(open, item => DisplayCategory(item.Action)),
             CountBy(open, item => item.Action.Priority.ToString()),
             CountBy(actions, item => item.Action.CurrentStatus(clock.Today).ToString()),
             CountBy(overdue, item => item.Requisition.Recruiter),
-            CountBy(overdue, item => item.Requisition.Department),
+            CountBy(overdue, item => item.Requisition.Department.ToString()),
             CountBy(actions, item => DisplayCategory(item.Action)),
             BuildMonthlyActionTrends(actions),
             BuildMonthlyActionTrends(escalationActions),
@@ -387,16 +390,14 @@ public class DashboardService(TalentLensDbContext dbContext, IClock clock) : IDa
         return Math.Max((int)Math.Floor((end - bottleneck.CreatedAt).TotalDays), 0);
     }
 
-    private static int CountStage(IEnumerable<Requisition> requisitions, RequisitionStatus stage)
+    private static int CountStage(IEnumerable<Requisition> requisitions, PipelineStage stage)
     {
         return requisitions.Count(requisition => IsInStage(requisition, stage));
     }
 
-    private static bool IsInStage(Requisition requisition, RequisitionStatus stage)
+    private static bool IsInStage(Requisition requisition, PipelineStage stage)
     {
-        return stage == RequisitionStatus.Closed
-            ? IsFilled(requisition)
-            : requisition.CurrentStatus == stage;
+        return !requisition.IsClosed && requisition.CurrentStage == stage;
     }
 
     private static bool IsFilled(Requisition requisition)

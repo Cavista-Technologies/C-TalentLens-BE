@@ -1,8 +1,4 @@
 <Solution>
-  <Folder Name="/.github/" />
-  <Folder Name="/.github/workflows/">
-    <File Path="Dockerize.yml" />
-  </Folder>
   <Project Path="C-TalentLens.csproj" />
   <Project Path="C-TalentLens.Tests/C-TalentLens.Tests.csproj" />
 </Solution>

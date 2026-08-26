@@ -27,4 +27,12 @@ internal static class DomainGuard
             ? throw new ArgumentOutOfRangeException(parameterName, "Value cannot be negative.")
             : value;
     }
+
+    public static TEnum RequiredEnum<TEnum>(TEnum value, string parameterName)
+        where TEnum : struct, Enum
+    {
+        return Enum.IsDefined(value)
+            ? value
+            : throw new ArgumentException("Value is not valid.", parameterName);
+    }
 }

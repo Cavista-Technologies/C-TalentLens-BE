@@ -4,11 +4,12 @@ namespace C_TalentLens.Application.Dtos;
 
 public record RequisitionQuery(
     string? Search,
-    string? Department,
+    RecruitmentTeam? Department,
     Guid? RecruiterUserId,
     Guid? HiringManagerUserId,
     RequisitionPriority? Priority,
     RequisitionStatus? Status,
+    PipelineStage? Stage,
     bool? OpenOnly,
     bool? ClosedOnly,
     bool? NearSlaBreach,

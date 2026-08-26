@@ -12,21 +12,25 @@ namespace C_TalentLens.Controllers;
 public class ReferralsController(IAnalyticsService analytics) : ControllerBase
 {
     [HttpGet]
-    [ProducesResponseType<IReadOnlyCollection<ReferralResponse>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyCollection<ReferralResponse>>> List(
+    [ProducesResponseType<PagedResponse<ReferralResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResponse<ReferralResponse>>> List(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
         [FromQuery] Guid? requisitionId = null,
         [FromQuery] C_TalentLens.Domain.ReferralStatus? status = null,
         [FromQuery] C_TalentLens.Domain.ReferralHiringOutcome? hiringOutcome = null,
         [FromQuery] string? referrerDepartment = null,
         [FromQuery] string? search = null,
         [FromQuery] bool? activeOnly = null,
+        [FromQuery] DateOnly? submittedFrom = null,
+        [FromQuery] DateOnly? submittedTo = null,
         CancellationToken cancellationToken = default)
     {
         var response = await analytics.ListReferralsAsync(
             AccessScope.FromPrincipal(User),
-            new ReferralQuery(requisitionId, status, hiringOutcome, referrerDepartment, search, activeOnly),
+            new ReferralQuery(requisitionId, status, hiringOutcome, referrerDepartment, search, activeOnly, submittedFrom, submittedTo),
             cancellationToken);
-        return Ok(response);
+        return Ok(Pagination.ToPagedResponse(response, new PageRequest(page, pageSize), "Referrals retrieved successfully."));
     }
 
     [HttpGet("{id:guid}")]

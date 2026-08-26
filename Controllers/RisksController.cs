@@ -27,7 +27,7 @@ public class RisksController(IRiskService risks) : ControllerBase
     [Authorize]
     [ProducesResponseType<GlobalRiskDashboardResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<GlobalRiskDashboardResponse>> Dashboard(
-        [FromQuery] string? department,
+        [FromQuery] C_TalentLens.Domain.RecruitmentTeam? department,
         [FromQuery] Guid? recruiterUserId,
         [FromQuery] Guid? hiringManagerUserId,
         [FromQuery] RequisitionPriority? priority,

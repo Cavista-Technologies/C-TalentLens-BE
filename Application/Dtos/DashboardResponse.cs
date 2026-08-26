@@ -26,15 +26,17 @@ public record TimeToFillDashboardResponse(
     IReadOnlyCollection<GroupMetricResponse> ByPriorityLevel);
 
 public record PipelineDashboardResponse(
-    int RolesInSourcing,
-    int RolesInScreening,
+    int RolesInJobPosting,
+    int RolesInPipeliningSourcing,
+    int RolesInSparkHire,
     int RolesInInterviewStage,
-    int RolesInOfferStage,
+    int RolesInRequestToHire,
+    int RolesOfferedOrHired,
     int RolesFilled,
     IReadOnlyCollection<PipelineStageMetricResponse> Stages);
 
 public record PipelineStageMetricResponse(
-    RequisitionStatus Stage,
+    PipelineStage Stage,
     int Count,
     IReadOnlyCollection<PipelineRequisitionResponse> Requisitions);
 
@@ -167,6 +169,7 @@ public record RiskItemResponse(
     string RoleName,
     string Owner,
     RequisitionStatus CurrentStatus,
+    PipelineStage CurrentStage,
     int DaysOpen,
     SlaState SlaState,
     bool IsStalled,

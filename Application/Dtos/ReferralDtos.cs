@@ -43,7 +43,9 @@ public record ReferralQuery(
     ReferralHiringOutcome? HiringOutcome,
     string? ReferrerDepartment,
     string? Search,
-    bool? ActiveOnly);
+    bool? ActiveOnly,
+    DateOnly? SubmittedFrom,
+    DateOnly? SubmittedTo);
 
 public record UpdateReferralStatusRequest(
     ReferralStatus Status,
@@ -56,7 +58,7 @@ public record ReferralResponse(
     Guid RequisitionId,
     string RequisitionCode,
     string RoleAppliedFor,
-    string Department,
+    RecruitmentTeam Department,
     string Recruiter,
     string ReferrerName,
     string? ReferrerEmployeeId,

@@ -6,10 +6,11 @@ public record RiskAssessmentResponse(
     Guid RequisitionId,
     string RequisitionCode,
     string RoleName,
-    string Department,
+    RecruitmentTeam Department,
     string Recruiter,
     RequisitionPriority Priority,
     RequisitionStatus CurrentStatus,
+    PipelineStage CurrentStage,
     int RiskScore,
     RiskLevel RiskLevel,
     int DaysOpen,
@@ -25,7 +26,7 @@ public record RiskFactorResponse(
     int Points);
 
 public record RiskDashboardQuery(
-    string? Department,
+    RecruitmentTeam? Department,
     Guid? RecruiterUserId,
     Guid? HiringManagerUserId,
     RequisitionPriority? Priority,
@@ -71,7 +72,7 @@ public record HighRiskRequisitionResponse(
     Guid RequisitionId,
     string RequisitionCode,
     string RoleName,
-    string Department,
+    RecruitmentTeam Department,
     string Recruiter,
     string HiringManager,
     int DaysOpen,

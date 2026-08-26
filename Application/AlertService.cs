@@ -42,8 +42,7 @@ public class AlertService(
             .Include(requisition => requisition.StageHistory)
             .Include(requisition => requisition.Bottlenecks)
             .Include(requisition => requisition.ActionItems)
-            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed &&
-                                  requisition.CurrentStatus != RequisitionStatus.Cancelled)
+            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .ToListAsync(cancellationToken);
 
         var alerts = new List<AlertResponse>();

@@ -5,9 +5,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>C_TalentLens</RootNamespace>
-    <UserSecretsId>ab926aee-0094-4456-843d-0279e40786c0</UserSecretsId>
-    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <DockerfileContext>.</DockerfileContext>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +16,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
 
@@ -27,6 +23,13 @@
     <Compile Remove="C-TalentLens.Tests\**\*.cs" />
     <Content Remove="C-TalentLens.Tests\**\*" />
     <None Remove="C-TalentLens.Tests\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="Application\Integrations\SmartRecruiters\mock-smartrecruiters-jobs.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

@@ -6,7 +6,7 @@ public class StageTransition
     {
     }
 
-    private StageTransition(Guid requisitionId, RequisitionStatus status, DateTimeOffset enteredAt)
+    private StageTransition(Guid requisitionId, PipelineStage status, DateTimeOffset enteredAt)
     {
         Id = Guid.NewGuid();
         RequisitionId = requisitionId;
@@ -18,7 +18,7 @@ public class StageTransition
 
     public Guid RequisitionId { get; private set; }
 
-    public RequisitionStatus Status { get; private set; }
+    public PipelineStage Status { get; private set; }
 
     public DateTimeOffset EnteredAt { get; private set; }
 
@@ -30,7 +30,7 @@ public class StageTransition
         return Math.Max((int)Math.Floor((end - EnteredAt).TotalDays), 0);
     }
 
-    public static StageTransition Start(Guid requisitionId, RequisitionStatus status, DateTimeOffset enteredAt)
+    public static StageTransition Start(Guid requisitionId, PipelineStage status, DateTimeOffset enteredAt)
     {
         return new StageTransition(requisitionId, status, enteredAt);
     }

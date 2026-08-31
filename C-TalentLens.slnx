@@ -1,4 +1,7 @@
 <Solution>
-  <Project Path="C-TalentLens.csproj" />
-  <Project Path="C-TalentLens.Tests/C-TalentLens.Tests.csproj" />
+  <Project Path="src/C-TalentLens.Api/C-TalentLens.Api.csproj" />
+  <Project Path="src/C-TalentLens.Domain/C-TalentLens.Domain.csproj" />
+  <Project Path="src/C-TalentLens.Application/C-TalentLens.Application.csproj" />
+  <Project Path="src/C-TalentLens.Infrastructure/C-TalentLens.Infrastructure.csproj" />
+  <Project Path="tests/C-TalentLens.Tests/C-TalentLens.Tests.csproj" />
 </Solution>

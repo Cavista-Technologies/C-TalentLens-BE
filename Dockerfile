@@ -27,4 +27,4 @@ COPY --from=build /app/publish .
 USER $APP_UID
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "C-TalentLens.dll"]
+ENTRYPOINT ["dotnet", "C-TalentLens.Api.dll"]

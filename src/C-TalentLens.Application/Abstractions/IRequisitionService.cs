@@ -13,6 +13,8 @@ public interface IRequisitionService
 
     Task<IReadOnlyCollection<PublicRequisitionResponse>> ListPublicOpenAsync(string? search, CancellationToken cancellationToken);
 
+    Task<RequisitionCodeResponse> GetNextCodeAsync(AccessScope accessScope, CancellationToken cancellationToken);
+
     Task<RequisitionResponse?> GetAsync(AccessScope accessScope, Guid id, CancellationToken cancellationToken);
 
     Task<RequisitionResponse> CreateAsync(AccessScope accessScope, CreateRequisitionRequest request, CancellationToken cancellationToken);

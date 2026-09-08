@@ -5,6 +5,7 @@ using C_TalentLens.Infrastructure;
 using C_TalentLens.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace C_TalentLens.Infrastructure.Services.Notifications;
 
@@ -12,11 +13,14 @@ public class AlertSignalSyncService(
     TalentLensDbContext dbContext,
     UserManager<ApplicationUser> userManager,
     IClock clock,
-    IRiskScoringEngine riskScoringEngine) : IAlertSignalSyncService
+    IRiskScoringEngine riskScoringEngine,
+    ILogger<AlertSignalSyncService> logger) : IAlertSignalSyncService
 {
     public async Task SyncAsync(CancellationToken cancellationToken)
     {
         var candidates = await GenerateAlertCandidatesAsync(cancellationToken);
+        logger.LogInformation("Alert signal sync started with {CandidateCount} alert candidates.", candidates.Count);
+
         var candidateKeys = candidates.Select(candidate => candidate.StableKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var existingSignals = await dbContext.AlertSignals
             .Include(signal => signal.Notifications)
@@ -26,6 +30,10 @@ public class AlertSignalSyncService(
             .ToListAsync(cancellationToken);
         var existingByKey = existingSignals.ToDictionary(signal => signal.StableKey, StringComparer.OrdinalIgnoreCase);
         var detectedAt = clock.UtcNow;
+        var createdSignals = 0;
+        var refreshedSignals = 0;
+        var resolvedSignals = 0;
+        var createdNotifications = 0;
 
         foreach (var candidate in candidates)
         {
@@ -45,6 +53,7 @@ public class AlertSignalSyncService(
                     detectedAt);
                 dbContext.AlertSignals.Add(signal);
                 existingByKey[candidate.StableKey] = signal;
+                createdSignals++;
             }
             else
             {
@@ -57,28 +66,40 @@ public class AlertSignalSyncService(
                     candidate.ActionLabel,
                     candidate.Metadata,
                     detectedAt);
+                refreshedSignals++;
             }
 
-            EnsureNotifications(signal, candidate.Recipients, detectedAt);
+            createdNotifications += EnsureNotifications(signal, candidate.Recipients, detectedAt);
         }
 
         foreach (var staleSignal in existingSignals.Where(signal => signal.IsActive && !candidateKeys.Contains(signal.StableKey)))
         {
             staleSignal.Resolve(detectedAt);
+            resolvedSignals++;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Alert signal sync completed. Created: {CreatedSignals}; Refreshed: {RefreshedSignals}; Resolved: {ResolvedSignals}; New notifications: {CreatedNotifications}.",
+            createdSignals,
+            refreshedSignals,
+            resolvedSignals,
+            createdNotifications);
     }
 
-    private static void EnsureNotifications(
+    private static int EnsureNotifications(
         AlertSignal signal,
         IReadOnlyCollection<UserRecipient> recipients,
         DateTimeOffset createdAt)
     {
+        var previousCount = signal.Notifications.Count;
         foreach (var recipient in recipients.DistinctBy(item => item.UserId))
         {
             signal.EnsureNotification(recipient.UserId, recipient.FullName, recipient.PrimaryRole, createdAt);
         }
+
+        return signal.Notifications.Count - previousCount;
     }
 
     private static readonly AlertType[] ConditionAlertTypes =
@@ -203,13 +224,13 @@ public class AlertSignalSyncService(
     {
         foreach (var bottleneck in requisition.Bottlenecks.Where(item => item.IsUnresolved))
         {
-            var recipient = FindById(users, bottleneck.OwnerUserId) ?? fallbackRecipient;
+            var recipients = ResolveRequisitionBottleneckRecipients(users, requisition, bottleneck, fallbackRecipient);
             var daysOpen = Math.Max((int)Math.Floor((clock.UtcNow - bottleneck.CreatedAt).TotalDays), 0);
             var escalationLevel = BottleneckEscalationLevel(daysOpen);
             yield return CreateAlert(
                 AlertType.OpenBottleneck,
                 BottleneckSeverity(daysOpen),
-                [recipient],
+                recipients,
                 requisition,
                 $"{requisition.RoleName} has an unresolved bottleneck{EscalationSuffix(escalationLevel)}.",
                 bottleneck.Description,
@@ -224,6 +245,24 @@ public class AlertSignalSyncService(
                     ["escalationLevel"] = escalationLevel
                 });
         }
+    }
+
+    private static IReadOnlyCollection<UserRecipient> ResolveRequisitionBottleneckRecipients(
+        IReadOnlyCollection<UserRecipient> users,
+        Requisition requisition,
+        Bottleneck bottleneck,
+        UserRecipient fallbackRecipient)
+    {
+        return new[]
+            {
+                FindById(users, bottleneck.OwnerUserId),
+                FindById(users, requisition.RecruiterUserId),
+                FindById(users, requisition.HiringManagerUserId),
+                fallbackRecipient
+            }
+            .OfType<UserRecipient>()
+            .DistinctBy(recipient => recipient.UserId)
+            .ToList();
     }
 
     private IEnumerable<AlertCandidate> CreateOverdueActionAlerts(

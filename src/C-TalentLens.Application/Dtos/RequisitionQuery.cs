@@ -13,4 +13,5 @@ public record RequisitionQuery(
     bool? OpenOnly,
     bool? ClosedOnly,
     bool? NearSlaBreach,
-    bool? OverdueOnly);
+    bool? OverdueOnly,
+    bool? FilledOnly);

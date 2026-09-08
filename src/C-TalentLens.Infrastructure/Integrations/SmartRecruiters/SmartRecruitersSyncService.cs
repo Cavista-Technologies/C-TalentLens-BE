@@ -4,6 +4,7 @@ using C_TalentLens.Infrastructure;
 using C_TalentLens.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace C_TalentLens.Infrastructure.Integrations.SmartRecruiters;
@@ -12,16 +13,35 @@ public class SmartRecruitersSyncService(
     ISmartRecruitersClient smartRecruitersClient,
     TalentLensDbContext dbContext,
     UserManager<ApplicationUser> userManager,
-    IOptions<SmartRecruitersOptions> options) : ISmartRecruitersSyncService
+    IOptions<SmartRecruitersOptions> options,
+    ILogger<SmartRecruitersSyncService> logger) : ISmartRecruitersSyncService
 {
     private const string ExternalSource = "SmartRecruiters";
 
     public async Task<SmartRecruitersSyncResponse> SyncJobsAsync(CancellationToken cancellationToken)
     {
         var jobs = await smartRecruitersClient.GetJobsAsync(cancellationToken);
+        logger.LogInformation("SmartRecruiters sync started with {JobCount} jobs.", jobs.Count);
+
+        var externalJobIds = jobs
+            .Where(job => !string.IsNullOrWhiteSpace(job.Id))
+            .Select(job => job.Id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var recruiter = await GetUserAsync(options.Value.DefaultRecruiterEmail, "default recruiter", cancellationToken);
         var hiringManager = await GetUserAsync(options.Value.DefaultHiringManagerEmail, "default hiring manager", cancellationToken);
-        var existingRequisitions = await dbContext.Requisitions.ToListAsync(cancellationToken);
+        var existingRequisitions = await dbContext.Requisitions
+            .Where(requisition =>
+                requisition.ExternalSource == ExternalSource &&
+                requisition.ExternalId != null &&
+                externalJobIds.Contains(requisition.ExternalId))
+            .ToListAsync(cancellationToken);
+        var existingByExternalId = existingRequisitions
+            .Where(requisition => !string.IsNullOrWhiteSpace(requisition.ExternalId))
+            .ToDictionary(requisition => requisition.ExternalId!, StringComparer.OrdinalIgnoreCase);
+        var existingRequisitionCodes = await dbContext.Requisitions
+            .Select(requisition => requisition.RequisitionCode)
+            .ToListAsync(cancellationToken);
         var items = new List<SmartRecruitersSyncItemResponse>();
         var errors = new List<SmartRecruitersSyncErrorResponse>();
         var created = 0;
@@ -30,24 +50,27 @@ public class SmartRecruitersSyncService(
 
         foreach (var job in jobs)
         {
+            var externalJobId = job.Id?.Trim() ?? string.Empty;
             try
             {
-                if (string.IsNullOrWhiteSpace(job.Id) || string.IsNullOrWhiteSpace(job.Title))
+                if (string.IsNullOrWhiteSpace(externalJobId) || string.IsNullOrWhiteSpace(job.Title))
                 {
                     skipped++;
-                    errors.Add(new SmartRecruitersSyncErrorResponse(job.Id, job.Title, "Job id and title are required."));
+                    errors.Add(new SmartRecruitersSyncErrorResponse(externalJobId, job.Title, "Job id and title are required."));
+                    logger.LogWarning(
+                        "Skipped SmartRecruiters job because required fields were missing. ExternalJobId: {ExternalJobId}; HasTitle: {HasTitle}.",
+                        externalJobId,
+                        !string.IsNullOrWhiteSpace(job.Title));
                     continue;
                 }
 
                 var status = MapStatus(job.Status);
                 var hiringGoal = Math.Max(job.Openings, 1);
-                var requisition = existingRequisitions.FirstOrDefault(item =>
-                    string.Equals(item.ExternalSource, ExternalSource, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(item.ExternalId, job.Id, StringComparison.OrdinalIgnoreCase));
+                existingByExternalId.TryGetValue(externalJobId, out var requisition);
 
                 if (requisition is null)
                 {
-                    var code = GenerateRequisitionCode(existingRequisitions, job.CreatedOn);
+                    var code = GenerateRequisitionCode(existingRequisitionCodes, job.CreatedOn);
                     requisition = new Requisition(
                         code,
                         job.Title,
@@ -64,7 +87,7 @@ public class SmartRecruitersSyncService(
                         PostingType.External,
                         "Synced from SmartRecruiters.",
                         "Created from SmartRecruiters job posting.");
-                    requisition.SetExternalReference(ExternalSource, job.Id);
+                    requisition.SetExternalReference(ExternalSource, externalJobId);
                     requisition.UpdateDetails(
                         requisition.RoleName,
                         requisition.Department,
@@ -85,13 +108,14 @@ public class SmartRecruitersSyncService(
                         requisition.HiringManagerNotes);
 
                     dbContext.Requisitions.Add(requisition);
-                    existingRequisitions.Add(requisition);
+                    existingByExternalId[externalJobId] = requisition;
+                    existingRequisitionCodes.Add(requisition.RequisitionCode);
                     created++;
-                    items.Add(ToItem(requisition, job.Id, "Created"));
+                    items.Add(ToItem(requisition, externalJobId, "Created"));
                     continue;
                 }
 
-                requisition.SetExternalReference(ExternalSource, job.Id);
+                requisition.SetExternalReference(ExternalSource, externalJobId);
                 requisition.UpdateDetails(
                     job.Title,
                     job.Department,
@@ -112,15 +136,27 @@ public class SmartRecruitersSyncService(
                     requisition.HiringManagerNotes);
 
                 updated++;
-                items.Add(ToItem(requisition, job.Id, "Updated"));
+                items.Add(ToItem(requisition, externalJobId, "Updated"));
             }
             catch (Exception exception)
             {
-                errors.Add(new SmartRecruitersSyncErrorResponse(job.Id, job.Title, exception.Message));
+                errors.Add(new SmartRecruitersSyncErrorResponse(externalJobId, job.Title, exception.Message));
+                logger.LogError(
+                    exception,
+                    "SmartRecruiters sync failed for external job {ExternalJobId}.",
+                    externalJobId);
             }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "SmartRecruiters sync completed. Total: {TotalJobs}; Created: {CreatedCount}; Updated: {UpdatedCount}; Skipped: {SkippedCount}; Failed: {FailedCount}.",
+            jobs.Count,
+            created,
+            updated,
+            skipped,
+            errors.Count);
 
         return new SmartRecruitersSyncResponse(
             jobs.Count,
@@ -149,11 +185,11 @@ public class SmartRecruitersSyncService(
             action);
     }
 
-    private static string GenerateRequisitionCode(IReadOnlyCollection<Requisition> requisitions, DateOnly createdOn)
+    private static string GenerateRequisitionCode(IReadOnlyCollection<string> requisitionCodes, DateOnly createdOn)
     {
         var prefix = $"REQ-SR-{createdOn.Year}";
-        var nextSequence = requisitions.Count(requisition =>
-            requisition.RequisitionCode.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) + 1;
+        var nextSequence = requisitionCodes.Count(code =>
+            code.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) + 1;
 
         string code;
         do
@@ -161,8 +197,7 @@ public class SmartRecruitersSyncService(
             code = $"{prefix}-{nextSequence:D4}";
             nextSequence++;
         }
-        while (requisitions.Any(requisition =>
-            string.Equals(requisition.RequisitionCode, code, StringComparison.OrdinalIgnoreCase)));
+        while (requisitionCodes.Contains(code, StringComparer.OrdinalIgnoreCase));
 
         return code;
     }

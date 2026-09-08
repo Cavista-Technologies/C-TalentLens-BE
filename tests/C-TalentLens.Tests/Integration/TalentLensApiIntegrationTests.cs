@@ -4,13 +4,17 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Net.Http.Json;
 using C_TalentLens;
+using C_TalentLens.Application;
 using C_TalentLens.Application.Dtos;
 using C_TalentLens.Application.Integrations.SmartRecruiters;
 using C_TalentLens.Domain;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace C_TalentLens.Tests;
@@ -21,6 +25,8 @@ public class TalentLensApiIntegrationTests : IDisposable
     {
         Converters = { new JsonStringEnumConverter() }
     };
+    private static readonly DateOnly TestToday = new(2026, 8, 25);
+    private static readonly DateTimeOffset TestUtcNow = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
 
     private readonly string _databasePath = Path.Combine(
         Path.GetTempPath(),
@@ -36,13 +42,20 @@ public class TalentLensApiIntegrationTests : IDisposable
         Environment.SetEnvironmentVariable("ConnectionStrings__TalentLens", $"Data Source={_databasePath}");
         Environment.SetEnvironmentVariable("Hangfire__DatabasePath", _hangfireDatabasePath);
         Environment.SetEnvironmentVariable("BackgroundJobs__Enabled", "false");
+        Environment.SetEnvironmentVariable("DemoData__Enabled", "true");
         Environment.SetEnvironmentVariable("Jwt__SigningKey", "test-only-signing-key-for-talentlens-integration");
+        Environment.SetEnvironmentVariable("Jwt__ExpiresInMinutes", "525600");
 
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
                 builder.UseEnvironment("Testing");
                 builder.ConfigureLogging(logging => logging.ClearProviders());
+                builder.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<IClock>();
+                    services.AddSingleton<IClock>(new FixedTestClock(TestToday, TestUtcNow));
+                });
                 builder.ConfigureAppConfiguration(configuration =>
                 {
                     configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -50,7 +63,9 @@ public class TalentLensApiIntegrationTests : IDisposable
                         ["ConnectionStrings:TalentLens"] = $"Data Source={_databasePath}",
                         ["Hangfire:DatabasePath"] = _hangfireDatabasePath,
                         ["BackgroundJobs:Enabled"] = "false",
-                        ["Jwt:SigningKey"] = "test-only-signing-key-for-talentlens-integration"
+                        ["DemoData:Enabled"] = "true",
+                        ["Jwt:SigningKey"] = "test-only-signing-key-for-talentlens-integration",
+                        ["Jwt:ExpiresInMinutes"] = "525600"
                     });
                 });
             });
@@ -254,6 +269,36 @@ public class TalentLensApiIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task NextRequisitionCode_ReturnsNextManualCodeForCurrentYear()
+    {
+        var client = _factory.CreateClient();
+        var login = await LoginAsRecruiterAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+
+        var response = await client.GetFromJsonAsync<RequisitionCodeResponse>("/api/requisitions/next-code", JsonOptions);
+
+        Assert.NotNull(response);
+        Assert.Equal("REQ-2026-017", response.RequisitionCode);
+    }
+
+    [Fact]
+    public async Task GetRequisitions_SupportsFilledOnlyFilter()
+    {
+        var client = _factory.CreateClient();
+        var login = await LoginAsync(client, "ta.manager@talentlens.local");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+
+        var page = await client.GetFromJsonAsync<PagedResponse<RequisitionResponse>>(
+            "/api/requisitions?filledOnly=true",
+            JsonOptions);
+
+        Assert.NotNull(page);
+        Assert.Equal(5, page.Pagination.TotalItems);
+        Assert.All(page.Items, requisition =>
+            Assert.True(requisition.HiringGoal > 0 && requisition.FilledGoal >= requisition.HiringGoal));
+    }
+
+    [Fact]
     public async Task GetRequisitions_ScopesRecruiterToAssignedRoles()
     {
         var client = _factory.CreateClient();
@@ -322,6 +367,36 @@ public class TalentLensApiIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Analytics_ScopesRecruiterReportsToAssignedRequisitions()
+    {
+        var client = _factory.CreateClient();
+        var login = await LoginAsRecruiterAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+
+        var requisitions = await client.GetFromJsonAsync<IReadOnlyCollection<RequisitionResponse>>(
+            "/api/analytics/requisitions",
+            JsonOptions);
+        var sourceAnalytics = await client.GetFromJsonAsync<SourceAnalyticsResponse>(
+            "/api/source-analytics",
+            JsonOptions);
+        var referralAnalytics = await client.GetFromJsonAsync<ReferralAnalyticsResponse>(
+            "/api/referral-analytics",
+            JsonOptions);
+
+        Assert.NotNull(requisitions);
+        Assert.Equal(8, requisitions.Count);
+        Assert.All(requisitions, requisition => Assert.Equal(login.User.Id, requisition.RecruiterUserId));
+
+        Assert.NotNull(sourceAnalytics);
+        Assert.Equal(10, sourceAnalytics.TotalSourceActivities);
+        Assert.Equal(0, sourceAnalytics.TotalHires);
+
+        Assert.NotNull(referralAnalytics);
+        Assert.Equal(7, referralAnalytics.TotalReferralsSubmitted);
+        Assert.Equal(0, referralAnalytics.ReferralHires);
+    }
+
+    [Fact]
     public async Task Referrals_CanBeCreatedForScopedRequisition()
     {
         var client = _factory.CreateClient();
@@ -336,7 +411,7 @@ public class TalentLensApiIntegrationTests : IDisposable
             "Amina Yusuf",
             "Sales",
             "Jordan Kim",
-            DateOnly.FromDateTime(DateTime.UtcNow),
+            TestToday,
             ReferralStatus.Submitted,
             ReferralHiringOutcome.Pending,
             null,
@@ -423,7 +498,7 @@ public class TalentLensApiIntegrationTests : IDisposable
             "Amina Yusuf",
             "Sales",
             "Casey Stone",
-            DateOnly.FromDateTime(DateTime.UtcNow),
+            TestToday,
             ReferralStatus.Submitted,
             ReferralHiringOutcome.Pending,
             null,
@@ -438,7 +513,7 @@ public class TalentLensApiIntegrationTests : IDisposable
             new UpdateReferralStatusRequest(
                 ReferralStatus.Hired,
                 null,
-                DateOnly.FromDateTime(DateTime.UtcNow),
+                TestToday,
                 "Candidate accepted offer."));
         await AssertSuccessAsync(updated);
         var hired = await updated.Content.ReadFromJsonAsync<ReferralResponse>(JsonOptions);
@@ -478,8 +553,8 @@ public class TalentLensApiIntegrationTests : IDisposable
                 "Previously worked together",
                 "4 years",
                 "Strong sales leadership background.",
-                DateTimeOffset.UtcNow.AddMinutes(-4),
-                DateTimeOffset.UtcNow,
+                TestUtcNow.AddMinutes(-4),
+                TestUtcNow,
                 ReferralStatus.Submitted,
                 ReferralHiringOutcome.Pending)
         });
@@ -520,7 +595,7 @@ public class TalentLensApiIntegrationTests : IDisposable
                 null,
                 null,
                 RequisitionPriority.Medium,
-                DateOnly.FromDateTime(DateTime.UtcNow),
+                TestToday,
                 null,
                 1,
                 0,
@@ -558,7 +633,7 @@ public class TalentLensApiIntegrationTests : IDisposable
             "Jordan Kim",
             HireSource.Other,
             "Agency",
-            DateOnly.FromDateTime(DateTime.UtcNow),
+            TestToday,
             SourceActivityStatus.Submitted,
             null));
 
@@ -842,6 +917,9 @@ public class TalentLensApiIntegrationTests : IDisposable
         Assert.All(alerts, alert => Assert.Equal(login.User.Id, alert.RecipientUserId));
         Assert.Contains(alerts, alert => alert.Type == AlertType.SlaBreached &&
                                          alert.RequisitionCode == "REQ-2026-001");
+        Assert.Contains(alerts, alert => alert.Type == AlertType.OpenBottleneck &&
+                                         alert.RequisitionCode == "REQ-2026-001" &&
+                                         alert.Metadata["owner"] == "Ada Okafor");
     }
 
     [Fact]
@@ -901,7 +979,7 @@ public class TalentLensApiIntegrationTests : IDisposable
             new CreateActionItemRequest(
                 "Submit interview feedback.",
                 hiringManager.User.Id,
-                DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
+                TestToday.AddDays(1),
                 "Submit feedback",
                 ActionItemCategory.HiringManagerFeedback,
                 null,
@@ -1070,7 +1148,7 @@ public class TalentLensApiIntegrationTests : IDisposable
 
         var created = await client.PostAsJsonAsync(
             $"/api/requisitions/{requisition.Id}/actions",
-            new CreateActionItemRequest("Follow up with candidate.", recruiter.User.Id, DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1)));
+            new CreateActionItemRequest("Follow up with candidate.", recruiter.User.Id, TestToday.AddDays(-1)));
         await AssertSuccessAsync(created);
         var action = await created.Content.ReadFromJsonAsync<ActionItemResponse>(JsonOptions);
         Assert.NotNull(action);
@@ -1116,7 +1194,7 @@ public class TalentLensApiIntegrationTests : IDisposable
 
         var created = await client.PostAsJsonAsync(
             $"/api/requisitions/{requisition.Id}/actions",
-            new CreateActionItemRequest("Confirm interview availability.", recruiter.User.Id, DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1)));
+            new CreateActionItemRequest("Confirm interview availability.", recruiter.User.Id, TestToday.AddDays(-1)));
         await AssertSuccessAsync(created);
         var action = await created.Content.ReadFromJsonAsync<ActionItemResponse>(JsonOptions);
         Assert.NotNull(action);
@@ -1147,7 +1225,7 @@ public class TalentLensApiIntegrationTests : IDisposable
             new CreateActionItemRequest(
                 "Schedule panel interview.",
                 recruiter.User.Id,
-                DateOnly.FromDateTime(DateTime.UtcNow).AddDays(2),
+                TestToday.AddDays(2),
                 "Schedule panel",
                 ActionItemCategory.InterviewScheduling,
                 null,
@@ -1187,7 +1265,9 @@ public class TalentLensApiIntegrationTests : IDisposable
         Environment.SetEnvironmentVariable("ConnectionStrings__TalentLens", null);
         Environment.SetEnvironmentVariable("Hangfire__DatabasePath", null);
         Environment.SetEnvironmentVariable("BackgroundJobs__Enabled", null);
+        Environment.SetEnvironmentVariable("DemoData__Enabled", null);
         Environment.SetEnvironmentVariable("Jwt__SigningKey", null);
+        Environment.SetEnvironmentVariable("Jwt__ExpiresInMinutes", null);
     }
 
     private static void DeleteIfExists(string path)
@@ -1227,7 +1307,6 @@ public class TalentLensApiIntegrationTests : IDisposable
         Guid hiringManagerUserId,
         string requisitionCode)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var response = await client.PostAsJsonAsync("/api/requisitions", new CreateRequisitionRequest(
             requisitionCode,
             "Backend Engineer",
@@ -1235,7 +1314,7 @@ public class TalentLensApiIntegrationTests : IDisposable
             hiringManagerUserId,
             recruiterUserId,
             RequisitionPriority.High,
-            today,
+            TestToday,
             1));
         response.EnsureSuccessStatusCode();
 
@@ -1250,6 +1329,13 @@ public class TalentLensApiIntegrationTests : IDisposable
             var content = await response.Content.ReadAsStringAsync();
             throw new InvalidOperationException($"{(int)response.StatusCode} {response.StatusCode}: {content}");
         }
+    }
+
+    private class FixedTestClock(DateOnly today, DateTimeOffset utcNow) : IClock
+    {
+        public DateOnly Today => today;
+
+        public DateTimeOffset UtcNow => utcNow;
     }
 }
 

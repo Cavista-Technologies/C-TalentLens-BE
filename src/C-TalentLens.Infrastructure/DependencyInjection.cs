@@ -3,6 +3,7 @@ using C_TalentLens.Application.Integrations.SmartRecruiters;
 using C_TalentLens.Application.Notifications;
 using C_TalentLens.Application.Security;
 using C_TalentLens.Infrastructure.BackgroundJobs;
+using C_TalentLens.Infrastructure.Configuration;
 using C_TalentLens.Infrastructure.Identity;
 using C_TalentLens.Infrastructure.Integrations.SmartRecruiters;
 using C_TalentLens.Infrastructure.Security;
@@ -28,6 +29,8 @@ public static class DependencyInjection
     {
         services.Configure<RecruitmentBackgroundJobOptions>(
             configuration.GetSection(RecruitmentBackgroundJobOptions.SectionName));
+        services.Configure<DemoDataOptions>(
+            configuration.GetSection(DemoDataOptions.SectionName));
         services.Configure<SmartRecruitersOptions>(configuration.GetSection("SmartRecruiters"));
 
         var talentLensConnectionString = configuration.GetConnectionString("TalentLens")
@@ -67,6 +70,7 @@ public static class DependencyInjection
         services.AddScoped<IAlertService, AlertService>();
         services.AddScoped<IAlertSignalSyncService, AlertSignalSyncService>();
         services.AddScoped<IRecruitmentNotificationService, RecruitmentNotificationService>();
+        services.AddScoped<IUserDirectoryService, UserDirectoryService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<ILeadershipSummaryService, LeadershipSummaryService>();
         services.AddScoped<IImportService, ImportService>();

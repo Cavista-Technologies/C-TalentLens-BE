@@ -1,29 +1,49 @@
 using C_TalentLens.Domain;
+using C_TalentLens.Infrastructure.Configuration;
 using C_TalentLens.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace C_TalentLens.Infrastructure;
 
 public static class DatabaseSeeder
 {
+    private static readonly DateOnly DemoToday = new(2026, 8, 25);
+    private static readonly DateTimeOffset DemoNow = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
+
     public static async Task SeedAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         var dbContext = services.GetRequiredService<TalentLensDbContext>();
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+        var demoDataOptions = services.GetRequiredService<IOptions<DemoDataOptions>>().Value;
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(DatabaseSeeder));
 
         await dbContext.Database.MigrateAsync(cancellationToken);
-        var users = await SeedIdentityAsync(roleManager, userManager);
+        await SeedRolesAsync(roleManager);
+
+        if (!demoDataOptions.Enabled)
+        {
+            logger.LogInformation("Demo data seeding skipped because {ConfigSection}:{ConfigKey} is disabled.",
+                DemoDataOptions.SectionName,
+                nameof(DemoDataOptions.Enabled));
+            return;
+        }
+
+        logger.LogInformation("Demo data seeding started.");
+
+        var users = await SeedDemoUsersAsync(userManager);
         await SeedRequisitionsAsync(dbContext, users, cancellationToken);
         await SeedSourceActivitiesAsync(dbContext, cancellationToken);
         await SeedReferralsAsync(dbContext, cancellationToken);
+
+        logger.LogInformation("Demo data seeding completed.");
     }
 
-    private static async Task<IReadOnlyDictionary<string, ApplicationUser>> SeedIdentityAsync(
-        RoleManager<IdentityRole<Guid>> roleManager,
-        UserManager<ApplicationUser> userManager)
+    private static async Task SeedRolesAsync(RoleManager<IdentityRole<Guid>> roleManager)
     {
         foreach (var role in UserRole.All)
         {
@@ -32,7 +52,11 @@ public static class DatabaseSeeder
                 await roleManager.CreateAsync(new IdentityRole<Guid>(role));
             }
         }
+    }
 
+    private static async Task<IReadOnlyDictionary<string, ApplicationUser>> SeedDemoUsersAsync(
+        UserManager<ApplicationUser> userManager)
+    {
         var maya = await EnsureUserAsync(
             userManager,
             "maya.chen@talentlens.local",
@@ -164,7 +188,7 @@ public static class DatabaseSeeder
             return;
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = DemoToday;
 
         var backendEngineer = new Requisition(
             "REQ-2026-001",
@@ -192,7 +216,7 @@ public static class DatabaseSeeder
             "Offer decision is blocked and the role has already breached SLA.",
             users["Ada Okafor"].Id,
             "Ada Okafor",
-            DateTimeOffset.UtcNow.AddDays(-15));
+            DemoNow.AddDays(-15));
         backendEngineer.AddActionItem(
             "Escalate interview feedback",
             "Escalate pending interview feedback.",
@@ -391,7 +415,7 @@ public static class DatabaseSeeder
             "Hiring cannot resume until budget is released.",
             users["Priya Shah"].Id,
             "Priya Shah",
-            DateTimeOffset.UtcNow.AddDays(-5));
+            DemoNow.AddDays(-5));
 
         var operationsCoordinator = new Requisition(
             "REQ-2026-008",
@@ -436,7 +460,7 @@ public static class DatabaseSeeder
             "Candidates are waiting for next steps and the requisition has breached SLA.",
             users["James Wright"].Id,
             "James Wright",
-            DateTimeOffset.UtcNow.AddDays(-12));
+            DemoNow.AddDays(-12));
         productManager.AddActionItem(
             "Align final role scope",
             "Hold alignment session and confirm final role scope before offer decision.",
@@ -821,7 +845,7 @@ public static class DatabaseSeeder
         var requisitions = await dbContext.Requisitions.ToDictionaryAsync(
             requisition => requisition.RequisitionCode,
             cancellationToken);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = DemoToday;
 
         dbContext.Referrals.AddRange(
             new Referral(
@@ -835,8 +859,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/morgan-lee.pdf",
                 "chinedu.eze@company.local",
                 "Chinedu Eze",
-                DateTimeOffset.UtcNow.AddMinutes(-18),
-                DateTimeOffset.UtcNow.AddMinutes(-15),
+                DemoNow.AddMinutes(-18),
+                DemoNow.AddMinutes(-15),
                 "Previously worked together",
                 "5 years",
                 "Candidate has strong backend engineering experience aligned with the role.",
@@ -855,8 +879,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/priya-menon.pdf",
                 "grace.patel@company.local",
                 "Grace Patel",
-                DateTimeOffset.UtcNow.AddMinutes(-25),
-                DateTimeOffset.UtcNow.AddMinutes(-21),
+                DemoNow.AddMinutes(-25),
+                DemoNow.AddMinutes(-21),
                 "Former colleague",
                 "3 years",
                 "Candidate has direct people analytics and reporting experience.",
@@ -875,8 +899,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/taylor-brooks.pdf",
                 "daniel.cruz@company.local",
                 "Daniel Cruz",
-                DateTimeOffset.UtcNow.AddMinutes(-35),
-                DateTimeOffset.UtcNow.AddMinutes(-31),
+                DemoNow.AddMinutes(-35),
+                DemoNow.AddMinutes(-31),
                 "Professional network",
                 "2 years",
                 "Candidate has sales management experience but was not aligned with territory needs.",
@@ -895,8 +919,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/victor-hayes.pdf",
                 "maya.chen@company.local",
                 "Maya Chen",
-                DateTimeOffset.UtcNow.AddMinutes(-28),
-                DateTimeOffset.UtcNow.AddMinutes(-25),
+                DemoNow.AddMinutes(-28),
+                DemoNow.AddMinutes(-25),
                 "Professional network",
                 "1 year",
                 "Strong cloud operations profile, but still early in review.",
@@ -915,8 +939,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/keisha-grant.pdf",
                 "fatima.lawal@company.local",
                 "Fatima Lawal",
-                DateTimeOffset.UtcNow.AddMinutes(-40),
-                DateTimeOffset.UtcNow.AddMinutes(-34),
+                DemoNow.AddMinutes(-40),
+                DemoNow.AddMinutes(-34),
                 "Former teammate",
                 "4 years",
                 "Candidate has strong client retention experience and should progress to screening.",
@@ -935,8 +959,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/nora-adeyemi.pdf",
                 "james.wright@company.local",
                 "James Wright",
-                DateTimeOffset.UtcNow.AddMinutes(-52),
-                DateTimeOffset.UtcNow.AddMinutes(-47),
+                DemoNow.AddMinutes(-52),
+                DemoNow.AddMinutes(-47),
                 "Industry contact",
                 "2 years",
                 "Candidate has customer success leadership experience and is currently in Spark Hire review.",
@@ -955,8 +979,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/ethan-brooks.pdf",
                 "olivia.grant@company.local",
                 "Olivia Grant",
-                DateTimeOffset.UtcNow.AddMinutes(-62),
-                DateTimeOffset.UtcNow.AddMinutes(-58),
+                DemoNow.AddMinutes(-62),
+                DemoNow.AddMinutes(-58),
                 "Previous manager",
                 "6 years",
                 "Candidate has strong product leadership background and is awaiting final stakeholder alignment.",
@@ -975,8 +999,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/amara-obi.pdf",
                 "noah.bello@company.local",
                 "Noah Bello",
-                DateTimeOffset.UtcNow.AddMinutes(-70),
-                DateTimeOffset.UtcNow.AddMinutes(-64),
+                DemoNow.AddMinutes(-70),
+                DemoNow.AddMinutes(-64),
                 "Portfolio review",
                 "18 months",
                 "Candidate accepted offer for the Creative Lead opening.",
@@ -995,8 +1019,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/renee-foster.pdf",
                 "ife.daniels@company.local",
                 "Ife Daniels",
-                DateTimeOffset.UtcNow.AddMinutes(-74),
-                DateTimeOffset.UtcNow.AddMinutes(-70),
+                DemoNow.AddMinutes(-74),
+                DemoNow.AddMinutes(-70),
                 "Former colleague",
                 "3 years",
                 "Candidate is in offer discussion and compensation approval is pending.",
@@ -1015,8 +1039,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/chuka-nwosu.pdf",
                 "ada.okafor@company.local",
                 "Ada Okafor",
-                DateTimeOffset.UtcNow.AddMinutes(-86),
-                DateTimeOffset.UtcNow.AddMinutes(-82),
+                DemoNow.AddMinutes(-86),
+                DemoNow.AddMinutes(-82),
                 "Community contact",
                 "8 months",
                 "Candidate has support escalation experience and is moving through screening.",
@@ -1035,8 +1059,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/luis-ortega.pdf",
                 "priya.shah@company.local",
                 "Priya Shah",
-                DateTimeOffset.UtcNow.AddMinutes(-92),
-                DateTimeOffset.UtcNow.AddMinutes(-88),
+                DemoNow.AddMinutes(-92),
+                DemoNow.AddMinutes(-88),
                 "Professional network",
                 "1 year",
                 "Candidate withdrew after budget approval delay.",
@@ -1055,8 +1079,8 @@ public static class DatabaseSeeder
                 "https://example.com/resumes/derek-nolan.pdf",
                 "mariam.bello@company.local",
                 "Mariam Bello",
-                DateTimeOffset.UtcNow.AddMinutes(-102),
-                DateTimeOffset.UtcNow.AddMinutes(-97),
+                DemoNow.AddMinutes(-102),
+                DemoNow.AddMinutes(-97),
                 "Former vendor contact",
                 "2 years",
                 "Candidate does not meet internal mobility requirement for this opening.",

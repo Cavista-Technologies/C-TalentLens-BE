@@ -8,6 +8,7 @@ using C_TalentLens.Infrastructure;
 using C_TalentLens.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace C_TalentLens.Infrastructure.Services;
 
@@ -17,7 +18,8 @@ public class RequisitionService(
     IRecruitmentAuthorizationService authorization,
     IRecruitmentNotificationService notifications,
     IAlertSignalSyncService alertSignalSyncService,
-    IClock clock) : IRequisitionService
+    IClock clock,
+    ILogger<RequisitionService> logger) : IRequisitionService
 {
     public async Task<PagedResponse<RequisitionResponse>> ListAsync(
         AccessScope accessScope,
@@ -25,7 +27,7 @@ public class RequisitionService(
         PageRequest pageRequest,
         CancellationToken cancellationToken)
     {
-        var orderedQuery = ApplyQuery(accessScope.ApplyTo(Query()), query)
+        var orderedQuery = ApplyQuery(accessScope.ApplyTo(QueryForRead()), query)
             .OrderBy(requisition => requisition.CurrentStatus == RequisitionStatus.Closed)
             .ThenBy(requisition => requisition.Priority)
             .ThenBy(requisition => requisition.DateOpened);
@@ -51,7 +53,7 @@ public class RequisitionService(
         string? search,
         CancellationToken cancellationToken)
     {
-        var requisitions = await ApplyPublicSearch(dbContext.Requisitions, search)
+        var requisitions = await ApplyPublicSearch(dbContext.Requisitions.AsNoTracking(), search)
             .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .OrderBy(requisition => requisition.RoleName)
             .ThenBy(requisition => requisition.RequisitionCode)
@@ -66,9 +68,19 @@ public class RequisitionService(
         return requisitions;
     }
 
+    public async Task<RequisitionCodeResponse> GetNextCodeAsync(
+        AccessScope accessScope,
+        CancellationToken cancellationToken)
+    {
+        authorization.EnsureCanCreateRequisition(accessScope);
+
+        var requisitionCode = await GenerateNextRequisitionCodeAsync(cancellationToken);
+        return new RequisitionCodeResponse(requisitionCode);
+    }
+
     public async Task<RequisitionResponse?> GetAsync(AccessScope accessScope, Guid id, CancellationToken cancellationToken)
     {
-        var requisition = await accessScope.ApplyTo(Query(includeActionHistory: false))
+        var requisition = await accessScope.ApplyTo(QueryForRead(includeActionHistory: false))
             .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         return requisition is null
             ? null
@@ -82,19 +94,20 @@ public class RequisitionService(
     {
         authorization.EnsureCanCreateRequisition(accessScope);
 
+        var requisitionCode = request.RequisitionCode.Trim();
         var duplicateExists = await dbContext.Requisitions
-            .AnyAsync(requisition => requisition.RequisitionCode == request.RequisitionCode, cancellationToken);
+            .AnyAsync(requisition => requisition.RequisitionCode == requisitionCode, cancellationToken);
 
         if (duplicateExists)
         {
-            throw new ConflictException($"Requisition code '{request.RequisitionCode}' already exists.", "duplicate_requisition_code");
+            throw new ConflictException($"Requisition code '{requisitionCode}' already exists.", "duplicate_requisition_code");
         }
 
         var hiringManager = await GetUserAsync(request.HiringManagerUserId, "Hiring manager", cancellationToken);
         var recruiter = await GetUserAsync(request.RecruiterUserId, "Recruiter", cancellationToken);
 
         var requisition = new Requisition(
-            request.RequisitionCode,
+            requisitionCode,
             request.RoleName,
             request.Department,
             hiringManager.Id,
@@ -126,6 +139,13 @@ public class RequisitionService(
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Created requisition {RequisitionId} with code {RequisitionCode} and assigned recruiter {RecruiterUserId} by user {ActorUserId}.",
+            requisition.Id,
+            requisition.RequisitionCode,
+            recruiter.Id,
+            actor.Id);
+
         return RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays);
     }
 
@@ -150,6 +170,8 @@ public class RequisitionService(
         }
 
         var previousRecruiterUserId = requisition.RecruiterUserId;
+        var previousStatus = requisition.CurrentStatus;
+        var previousStage = requisition.CurrentStage;
         if (request.RecruiterUserId != previousRecruiterUserId)
         {
             authorization.EnsureCanReassignRecruiter(accessScope);
@@ -196,6 +218,16 @@ public class RequisitionService(
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Updated requisition {RequisitionId} with code {RequisitionCode} by user {ActorUserId}. Status changed from {PreviousStatus} to {CurrentStatus}; stage changed from {PreviousStage} to {CurrentStage}.",
+            requisition.Id,
+            requisition.RequisitionCode,
+            actor.Id,
+            previousStatus,
+            requisition.CurrentStatus,
+            previousStage,
+            requisition.CurrentStage);
+
         return RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays);
     }
 
@@ -214,11 +246,20 @@ public class RequisitionService(
 
         authorization.EnsureCanMoveRequisitionStage(accessScope, requisition);
 
+        var previousStage = requisition.CurrentStage;
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         requisition.MoveTo(request.Stage, request.EffectiveDate);
         await dbContext.SaveChangesAsync(cancellationToken);
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Moved requisition {RequisitionId} with code {RequisitionCode} from stage {PreviousStage} to {CurrentStage} by user {ActorUserId}.",
+            requisition.Id,
+            requisition.RequisitionCode,
+            previousStage,
+            requisition.CurrentStage,
+            accessScope.UserId);
 
         return RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays);
     }
@@ -265,6 +306,14 @@ public class RequisitionService(
         await dbContext.SaveChangesAsync(cancellationToken);
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Reassigned requisition {RequisitionId} with code {RequisitionCode} from recruiter {PreviousRecruiterUserId} to recruiter {RecruiterUserId} by user {ActorUserId}.",
+            requisition.Id,
+            requisition.RequisitionCode,
+            previousRecruiterUserId,
+            recruiter.Id,
+            actor.Id);
 
         return RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays);
     }
@@ -319,6 +368,14 @@ public class RequisitionService(
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Added bottleneck {BottleneckId} to requisition {RequisitionId} with code {RequisitionCode}; owner {OwnerUserId}; created by user {ActorUserId}.",
+            bottleneck.Id,
+            requisition.Id,
+            requisition.RequisitionCode,
+            owner.Id,
+            actor.Id);
+
         return RequisitionMapper.ToResponse(bottleneck, clock);
     }
 
@@ -370,6 +427,14 @@ public class RequisitionService(
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Added action item {ActionItemId} to requisition {RequisitionId} with code {RequisitionCode}; owner {OwnerUserId}; created by user {ActorUserId}.",
+            actionItem.Id,
+            requisition.Id,
+            requisition.RequisitionCode,
+            owner.Id,
+            creator.Id);
+
         return RequisitionMapper.ToResponse(actionItem, clock);
     }
 
@@ -390,6 +455,7 @@ public class RequisitionService(
 
         authorization.EnsureCanManage(actionItem, accessScope, requisition!);
         var changedBy = await GetUserAsync(accessScope.UserId, "Action updater", cancellationToken);
+        var previousStatus = actionItem.Status;
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var history = actionItem.UpdateStatus(request.Status, changedBy.Id, changedBy.FullName, request.Notes);
         if (history is not null)
@@ -400,6 +466,15 @@ public class RequisitionService(
         await dbContext.Entry(actionItem).Collection(action => action.History).LoadAsync(cancellationToken);
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Updated action item {ActionItemId} for requisition {RequisitionId} with code {RequisitionCode} from status {PreviousStatus} to {CurrentStatus} by user {ActorUserId}.",
+            actionItem.Id,
+            requisition!.Id,
+            requisition.RequisitionCode,
+            previousStatus,
+            actionItem.Status,
+            changedBy.Id);
 
         return RequisitionMapper.ToResponse(actionItem, clock);
     }
@@ -448,6 +523,15 @@ public class RequisitionService(
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Reassigned action item {ActionItemId} for requisition {RequisitionId} with code {RequisitionCode} from owner {PreviousOwnerUserId} to owner {OwnerUserId} by user {ActorUserId}.",
+            actionItem.Id,
+            requisition!.Id,
+            requisition.RequisitionCode,
+            previousOwnerUserId,
+            newOwner.Id,
+            changedBy.Id);
+
         return RequisitionMapper.ToResponse(actionItem, clock);
     }
 
@@ -478,6 +562,13 @@ public class RequisitionService(
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Resolved bottleneck {BottleneckId} for requisition {RequisitionId} with code {RequisitionCode} by user {ActorUserId}.",
+            bottleneck.Id,
+            requisition!.Id,
+            requisition.RequisitionCode,
+            resolutionOwner.Id);
+
         return RequisitionMapper.ToResponse(bottleneck, clock);
     }
 
@@ -502,11 +593,21 @@ public class RequisitionService(
         }
 
         authorization.EnsureCanManage(bottleneck, accessScope, requisition!);
+        var previousStatus = bottleneck.Status;
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         bottleneck.UpdateStatus(request.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Updated bottleneck {BottleneckId} for requisition {RequisitionId} with code {RequisitionCode} from status {PreviousStatus} to {CurrentStatus} by user {ActorUserId}.",
+            bottleneck.Id,
+            requisition!.Id,
+            requisition.RequisitionCode,
+            previousStatus,
+            bottleneck.Status,
+            accessScope.UserId);
 
         return RequisitionMapper.ToResponse(bottleneck, clock);
     }
@@ -536,6 +637,13 @@ public class RequisitionService(
         await alertSignalSyncService.SyncAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Completed action item {ActionItemId} for requisition {RequisitionId} with code {RequisitionCode} by user {ActorUserId}.",
+            actionItem.Id,
+            requisition!.Id,
+            requisition.RequisitionCode,
+            completedBy.Id);
+
         return RequisitionMapper.ToResponse(actionItem, clock);
     }
 
@@ -551,6 +659,52 @@ public class RequisitionService(
             ? query.Include(requisition => requisition.ActionItems)
                 .ThenInclude(action => action.History)
             : query;
+    }
+
+    private IQueryable<Requisition> QueryForRead(bool includeActionHistory = true)
+    {
+        return Query(includeActionHistory).AsNoTracking();
+    }
+
+    private async Task<string> GenerateNextRequisitionCodeAsync(CancellationToken cancellationToken)
+    {
+        var year = clock.Today.Year;
+        var prefix = $"REQ-{year}-";
+        var existingCodes = await dbContext.Requisitions
+            .AsNoTracking()
+            .Where(requisition => EF.Functions.Like(requisition.RequisitionCode, $"{prefix}%"))
+            .Select(requisition => requisition.RequisitionCode)
+            .ToListAsync(cancellationToken);
+
+        var nextSequence = existingCodes
+            .Select(code => TryGetManualSequence(code, prefix))
+            .Where(sequence => sequence is not null)
+            .Select(sequence => sequence!.Value)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+
+        string candidate;
+        do
+        {
+            candidate = $"{prefix}{nextSequence:D3}";
+            nextSequence++;
+        }
+        while (existingCodes.Contains(candidate, StringComparer.OrdinalIgnoreCase));
+
+        return candidate;
+    }
+
+    private static int? TryGetManualSequence(string requisitionCode, string prefix)
+    {
+        if (!requisitionCode.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var suffix = requisitionCode[prefix.Length..];
+        return suffix.All(char.IsDigit) && int.TryParse(suffix, out var sequence)
+            ? sequence
+            : null;
     }
 
     private IQueryable<Requisition> ApplyQuery(IQueryable<Requisition> query, RequisitionQuery request)
@@ -598,6 +752,13 @@ public class RequisitionService(
         if (request.ClosedOnly == true)
         {
             query = query.Where(requisition => requisition.CurrentStatus == RequisitionStatus.Closed);
+        }
+
+        if (request.FilledOnly == true)
+        {
+            query = query.Where(requisition =>
+                requisition.HiringGoal > 0 &&
+                requisition.FilledGoal >= requisition.HiringGoal);
         }
 
         if (request.NearSlaBreach == true)

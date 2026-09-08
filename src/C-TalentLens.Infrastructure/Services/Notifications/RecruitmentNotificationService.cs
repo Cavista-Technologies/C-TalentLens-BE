@@ -1,12 +1,14 @@
 using C_TalentLens.Application;
 using C_TalentLens.Application.Notifications;
 using C_TalentLens.Domain;
+using Microsoft.Extensions.Logging;
 
 namespace C_TalentLens.Infrastructure.Services.Notifications;
 
 public class RecruitmentNotificationService(
     TalentLensDbContext dbContext,
-    IClock clock) : IRecruitmentNotificationService
+    IClock clock,
+    ILogger<RecruitmentNotificationService> logger) : IRecruitmentNotificationService
 {
     public Task NotifyRequisitionAssignedAsync(
         Requisition requisition,
@@ -131,5 +133,13 @@ public class RecruitmentNotificationService(
 
         signal.EnsureNotification(recipientUserId, recipientName, recipientRole, now);
         dbContext.AlertSignals.Add(signal);
+
+        logger.LogInformation(
+            "Queued {AlertType} notification {AlertSignalId} for requisition {RequisitionId} with code {RequisitionCode}; recipient {RecipientUserId}.",
+            type,
+            signal.Id,
+            requisition.Id,
+            requisition.RequisitionCode,
+            recipientUserId);
     }
 }

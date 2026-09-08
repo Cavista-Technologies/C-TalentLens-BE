@@ -7,6 +7,7 @@ using C_TalentLens.Infrastructure;
 using C_TalentLens.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace C_TalentLens.Infrastructure.Services;
 
@@ -14,7 +15,8 @@ public class AnalyticsService(
     TalentLensDbContext dbContext,
     UserManager<ApplicationUser> userManager,
     IRecruitmentAuthorizationService authorization,
-    IClock clock) : IAnalyticsService
+    IClock clock,
+    ILogger<AnalyticsService> logger) : IAnalyticsService
 {
     private const string PublicReferralActorEmail = "referral.portal@talentlens.local";
     private const string PublicReferralActorName = "Referral Portal";
@@ -50,6 +52,13 @@ public class AnalyticsService(
         dbContext.SourceActivities.Add(activity);
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Created source activity {SourceActivityId} for requisition {RequisitionId}; source {Source}; status {Status}.",
+            activity.Id,
+            activity.RequisitionId,
+            activity.Source,
+            activity.Status);
+
         return ToResponse(activity, requisition);
     }
 
@@ -70,8 +79,7 @@ public class AnalyticsService(
         ReportAccessContext reportContext,
         CancellationToken cancellationToken)
     {
-        _ = reportContext;
-        var records = await GetOrganizationSourceRecordsAsync(cancellationToken);
+        var records = await GetReportSourceRecordsAsync(reportContext, cancellationToken);
         var totalActivities = records.Count;
         var totalHires = records.Count(item => item.activity.IsHire);
 
@@ -119,17 +127,15 @@ public class AnalyticsService(
         ReportAccessContext reportContext,
         CancellationToken cancellationToken)
     {
-        _ = reportContext;
-        var requisitions = await dbContext.Requisitions
-            .AsNoTracking()
+        var requisitions = await reportContext.ApplyTo(dbContext.Requisitions.AsNoTracking())
             .Select(requisition => new HiringTrendRequisition(
                 requisition.DateOpened,
                 requisition.ClosedDate,
                 requisition.OfferExtendedDate,
                 requisition.HiringGoal))
             .ToListAsync(cancellationToken);
-        var sourceRecords = await GetOrganizationSourceRecordsAsync(cancellationToken);
-        var referralRecords = await GetOrganizationReferralRecordsAsync(cancellationToken);
+        var sourceRecords = await GetReportSourceRecordsAsync(reportContext, cancellationToken);
+        var referralRecords = await GetReportReferralRecordsAsync(reportContext, cancellationToken);
 
         var months = requisitions
             .Select(requisition => MonthKey(requisition.DateOpened))
@@ -177,8 +183,7 @@ public class AnalyticsService(
         ReportAccessContext reportContext,
         CancellationToken cancellationToken)
     {
-        _ = reportContext;
-        var requisitions = await QueryRequisitions()
+        var requisitions = await reportContext.ApplyTo(QueryRequisitions())
             .OrderBy(requisition => requisition.CurrentStatus == RequisitionStatus.Closed)
             .ThenBy(requisition => requisition.CurrentStage)
             .ThenBy(requisition => requisition.DateOpened)
@@ -295,6 +300,8 @@ public class AnalyticsService(
 
         authorization.EnsureCanUpdateReferralStatus(accessScope);
         var changedBy = await GetUserAsync(accessScope.UserId, "Referral updater", cancellationToken);
+        var previousStatus = record.referral.Status;
+        var previousOutcome = record.referral.HiringOutcome;
         var histories = record.referral.UpdateStatus(
             request.Status,
             request.HiringOutcome,
@@ -305,6 +312,16 @@ public class AnalyticsService(
         dbContext.Set<ReferralHistory>().AddRange(histories);
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Updated referral {ReferralId} for requisition {RequisitionId} by user {ActorUserId}. Status changed from {PreviousStatus} to {CurrentStatus}; outcome changed from {PreviousOutcome} to {CurrentOutcome}.",
+            record.referral.Id,
+            record.referral.RequisitionId,
+            changedBy.Id,
+            previousStatus,
+            record.referral.Status,
+            previousOutcome,
+            record.referral.HiringOutcome);
+
         return ToResponse(record.referral, record.requisition);
     }
 
@@ -312,9 +329,8 @@ public class AnalyticsService(
         ReportAccessContext reportContext,
         CancellationToken cancellationToken)
     {
-        _ = reportContext;
-        var records = await GetOrganizationReferralRecordsAsync(cancellationToken);
-        var sourceRecords = await GetOrganizationSourceRecordsAsync(cancellationToken);
+        var records = await GetReportReferralRecordsAsync(reportContext, cancellationToken);
+        var sourceRecords = await GetReportSourceRecordsAsync(reportContext, cancellationToken);
         var totalSubmitted = records.Count;
         var totalHires = records.Count(item => item.referral.IsHire);
         var totalHiresFromAllSources = sourceRecords.Count(item => item.activity.IsHire);
@@ -416,38 +432,36 @@ public class AnalyticsService(
         AccessScope accessScope,
         CancellationToken cancellationToken)
     {
-        var requisitionsById = await accessScope.ApplyTo(dbContext.Requisitions.AsNoTracking())
-            .ToDictionaryAsync(requisition => requisition.Id, cancellationToken);
-
-        var requisitionIds = requisitionsById.Keys.ToList();
-        var activities = await dbContext.SourceActivities
-            .Where(activity => requisitionIds.Contains(activity.RequisitionId))
-            .ToListAsync(cancellationToken);
-
-        return activities
-            .Select(activity => new SourceRecord(activity, requisitionsById[activity.RequisitionId]))
-            .ToList();
+        return await GetSourceRecordsAsync(
+            accessScope.ApplyTo(dbContext.Requisitions.AsNoTracking()),
+            cancellationToken);
     }
 
-    private async Task<IReadOnlyCollection<SourceRecord>> GetOrganizationSourceRecordsAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyCollection<SourceRecord>> GetReportSourceRecordsAsync(
+        ReportAccessContext reportContext,
+        CancellationToken cancellationToken)
     {
-        var requisitionsById = await dbContext.Requisitions
-            .AsNoTracking()
-            .ToDictionaryAsync(requisition => requisition.Id, cancellationToken);
-
-        var activities = await dbContext.SourceActivities
-            .Where(activity => requisitionsById.Keys.Contains(activity.RequisitionId))
-            .ToListAsync(cancellationToken);
-
-        return activities
-            .Select(activity => new SourceRecord(activity, requisitionsById[activity.RequisitionId]))
-            .ToList();
+        return await GetSourceRecordsAsync(
+            reportContext.ApplyTo(dbContext.Requisitions.AsNoTracking()),
+            cancellationToken);
     }
 
-    private async Task<IReadOnlyCollection<ReferralRecord>> GetOrganizationReferralRecordsAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyCollection<SourceRecord>> GetSourceRecordsAsync(
+        IQueryable<Requisition> requisitionQuery,
+        CancellationToken cancellationToken)
     {
-        var requisitionsById = await dbContext.Requisitions
-            .AsNoTracking()
+        return await (
+                from activity in dbContext.SourceActivities.AsNoTracking()
+                join requisition in requisitionQuery on activity.RequisitionId equals requisition.Id
+                select new SourceRecord(activity, requisition))
+            .ToListAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyCollection<ReferralRecord>> GetReportReferralRecordsAsync(
+        ReportAccessContext reportContext,
+        CancellationToken cancellationToken)
+    {
+        var requisitionsById = await reportContext.ApplyTo(dbContext.Requisitions.AsNoTracking())
             .Select(requisition => new ReferralRequisitionSnapshot(
                 requisition.Id,
                 requisition.RequisitionCode,
@@ -456,15 +470,14 @@ public class AnalyticsService(
                 requisition.Recruiter))
             .ToDictionaryAsync(requisition => requisition.Id, cancellationToken);
 
+        var requisitionIds = requisitionsById.Keys.ToList();
         var referrals = await dbContext.Referrals
-            .Include(referral => referral.History)
-            .Where(referral => requisitionsById.Keys.Contains(referral.RequisitionId))
+            .AsNoTracking()
+            .Where(referral => requisitionIds.Contains(referral.RequisitionId))
             .ToListAsync(cancellationToken);
 
         return referrals
-            .Select(referral => new ReferralRecord(
-                referral,
-                requisitionsById[referral.RequisitionId]))
+            .Select(referral => new ReferralRecord(referral, requisitionsById[referral.RequisitionId]))
             .ToList();
     }
 
@@ -550,6 +563,7 @@ public class AnalyticsService(
     private IQueryable<Requisition> QueryRequisitions()
     {
         return dbContext.Requisitions
+            .AsNoTracking()
             .Include(requisition => requisition.StageHistory)
             .Include(requisition => requisition.Bottlenecks)
             .Include(requisition => requisition.ActionItems)
@@ -674,23 +688,6 @@ public class AnalyticsService(
         return query;
     }
 
-    private static bool MatchesReferralSearch(ReferralRecord record, string? search)
-    {
-        if (string.IsNullOrWhiteSpace(search))
-        {
-            return true;
-        }
-
-        return new[]
-            {
-                record.referral.ReferrerName,
-                record.referral.CandidateName,
-                record.referral.CandidateEmail,
-                record.requisition.RequisitionCode,
-                record.requisition.RoleName
-            }.Any(value => value.Contains(search, StringComparison.OrdinalIgnoreCase));
-    }
-
     private async Task<ReferralResponse> CreateReferralCoreAsync(
         Requisition requisition,
         CreateReferralRequest request,
@@ -723,6 +720,14 @@ public class AnalyticsService(
         dbContext.Referrals.Add(referral);
         dbContext.Set<ReferralHistory>().Add(history);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Created referral {ReferralId} for requisition {RequisitionId} by user {ActorUserId}; status {Status}; outcome {HiringOutcome}.",
+            referral.Id,
+            referral.RequisitionId,
+            createdByUserId,
+            referral.Status,
+            referral.HiringOutcome);
 
         return ToResponse(referral, requisition);
     }

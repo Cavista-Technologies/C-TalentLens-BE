@@ -27,6 +27,7 @@ public class RequisitionsController(IRequisitionService requisitions) : Controll
         [FromQuery] bool? closedOnly = null,
         [FromQuery] bool? nearSlaBreach = null,
         [FromQuery] bool? overdueOnly = null,
+        [FromQuery] bool? filledOnly = null,
         CancellationToken cancellationToken = default)
     {
         var response = await requisitions.ListAsync(AccessScope.FromPrincipal(User), new RequisitionQuery(
@@ -40,7 +41,19 @@ public class RequisitionsController(IRequisitionService requisitions) : Controll
             openOnly,
             closedOnly,
             nearSlaBreach,
-            overdueOnly), new PageRequest(page, pageSize), cancellationToken);
+            overdueOnly,
+            filledOnly), new PageRequest(page, pageSize), cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpGet("next-code")]
+    [Authorize(Policy = "RecruitmentWrite")]
+    [ProducesResponseType<RequisitionCodeResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<RequisitionCodeResponse>> NextCode(CancellationToken cancellationToken)
+    {
+        var response = await requisitions.GetNextCodeAsync(AccessScope.FromPrincipal(User), cancellationToken);
         return Ok(response);
     }
 

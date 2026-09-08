@@ -2,6 +2,8 @@ using C_TalentLens.Domain;
 
 namespace C_TalentLens.Application.Dtos;
 
+public record RequisitionCodeResponse(string RequisitionCode);
+
 public record RequisitionResponse(
     Guid Id,
     string RequisitionCode,

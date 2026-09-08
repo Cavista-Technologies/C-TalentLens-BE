@@ -7,13 +7,15 @@ using C_TalentLens.Infrastructure;
 using C_TalentLens.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace C_TalentLens.Infrastructure.Services;
 
 public class ImportService(
     TalentLensDbContext dbContext,
     UserManager<ApplicationUser> userManager,
-    IClock clock) : IImportService
+    IClock clock,
+    ILogger<ImportService> logger) : IImportService
 {
     public async Task<ImportResultResponse> ImportReferralsAsync(
         AccessScope accessScope,
@@ -21,11 +23,17 @@ public class ImportService(
         CancellationToken cancellationToken)
     {
         var actor = await GetUserAsync(accessScope.UserId, "Importer", cancellationToken);
-        var visibleRequisitions = await accessScope.ApplyTo(dbContext.Requisitions)
+        logger.LogInformation(
+            "Referral import started by user {ActorUserId} with {TotalRows} rows.",
+            actor.Id,
+            rows.Count);
+
+        var visibleRequisitions = await accessScope.ApplyTo(dbContext.Requisitions.AsNoTracking())
             .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .ToListAsync(cancellationToken);
         var visibleRequisitionIds = visibleRequisitions.Select(requisition => requisition.Id).ToList();
         var existingReferrals = await dbContext.Referrals
+            .AsNoTracking()
             .Where(referral => visibleRequisitionIds.Contains(referral.RequisitionId))
             .ToListAsync(cancellationToken);
         var errors = new List<ImportRowErrorResponse>();
@@ -102,6 +110,13 @@ public class ImportService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        logger.LogInformation(
+            "Referral import completed by user {ActorUserId}. Imported: {ImportedCount}; Skipped: {SkippedCount}; Failed: {FailedCount}.",
+            actor.Id,
+            imported,
+            skipped,
+            errors.Count);
+
         return new ImportResultResponse(
             rows.Count,
             imported,
@@ -118,10 +133,23 @@ public class ImportService(
         CancellationToken cancellationToken)
     {
         var actor = await GetUserAsync(accessScope.UserId, "Importer", cancellationToken);
-        var users = await userManager.Users.ToListAsync(cancellationToken);
+        logger.LogInformation(
+            "Requisition import started by user {ActorUserId} with {TotalRows} rows.",
+            actor.Id,
+            rows.Count);
+
+        var users = await userManager.Users.AsNoTracking().ToListAsync(cancellationToken);
+        var providedCodes = rows
+            .Select(row => row.RequisitionCode?.Trim())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var visibleExistingRequisitions = await accessScope.ApplyTo(dbContext.Requisitions)
+            .Where(requisition => providedCodes.Contains(requisition.RequisitionCode))
             .ToListAsync(cancellationToken);
         var existingRequisitionCodes = await dbContext.Requisitions
+            .AsNoTracking()
             .Select(requisition => requisition.RequisitionCode)
             .ToListAsync(cancellationToken);
         var errors = new List<ImportRowErrorResponse>();
@@ -258,6 +286,13 @@ public class ImportService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Requisition import completed by user {ActorUserId}. Imported: {ImportedCount}; Updated: {UpdatedCount}; Failed: {FailedCount}.",
+            actor.Id,
+            imported,
+            updated,
+            errors.Count);
 
         return new ImportResultResponse(
             rows.Count,
@@ -397,7 +432,7 @@ public class ImportService(
             throw new BadRequestException($"{label} user id is required.", "user_id_required");
         }
 
-        var user = await userManager.Users.FirstOrDefaultAsync(item => item.Id == userId, cancellationToken);
+        var user = await userManager.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == userId, cancellationToken);
         return user ?? throw new BadRequestException($"{label} user was not found.", "user_not_found");
     }
 }

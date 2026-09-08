@@ -13,7 +13,8 @@ namespace C_TalentLens.Controllers;
 public class AuthController(
     UserManager<ApplicationUser> users,
     SignInManager<ApplicationUser> signInManager,
-    IJwtTokenService tokens) : ControllerBase
+    IJwtTokenService tokens,
+    ILogger<AuthController> logger) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("login")]
@@ -24,12 +25,14 @@ public class AuthController(
         var user = await users.FindByEmailAsync(request.Email);
         if (user is null)
         {
+            logger.LogWarning("Login failed for email {Email}.", request.Email);
             return UnauthorizedProblem();
         }
 
         var result = await signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
         if (!result.Succeeded)
         {
+            logger.LogWarning("Login failed for user {UserId}.", user.Id);
             return UnauthorizedProblem();
         }
 
@@ -40,6 +43,8 @@ public class AuthController(
             user.Department ?? string.Empty,
             user.ReportingLine ?? string.Empty,
             cancellationToken);
+
+        logger.LogInformation("Login succeeded for user {UserId}.", user.Id);
         return Ok(response);
     }
 

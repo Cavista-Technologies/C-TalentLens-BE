@@ -4,6 +4,7 @@ using C_TalentLens.Application.Security;
 using C_TalentLens.Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using C_TalentLens.Api.OpenApi;
 
 namespace C_TalentLens.Controllers;
 
@@ -13,6 +14,9 @@ public class RisksController(IRiskService risks) : ControllerBase
 {
     [HttpGet]
     [Authorize]
+    [SwaggerOperation(
+        Summary = "List requisition risks",
+        Description = "Returns paginated risk assessments for requisitions visible to the signed-in user.")]
     [ProducesResponseType<PagedResponse<RiskAssessmentResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<RiskAssessmentResponse>>> List(
         [FromQuery] int page = 1,
@@ -25,6 +29,9 @@ public class RisksController(IRiskService risks) : ControllerBase
 
     [HttpGet("dashboard")]
     [Authorize]
+    [SwaggerOperation(
+        Summary = "Get risk dashboard",
+        Description = "Returns risk distribution, SLA risk, bottleneck impact, overdue work, and leadership risk metrics with optional team and owner filters.")]
     [ProducesResponseType<GlobalRiskDashboardResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<GlobalRiskDashboardResponse>> Dashboard(
         [FromQuery] C_TalentLens.Domain.RecruitmentTeam? department,
@@ -45,6 +52,9 @@ public class RisksController(IRiskService risks) : ControllerBase
 
     [HttpGet("~/api/requisitions/{id:guid}/risk")]
     [Authorize]
+    [SwaggerOperation(
+        Summary = "Get requisition risk",
+        Description = "Returns the calculated risk assessment for a specific requisition when the signed-in user has access to that requisition.")]
     [ProducesResponseType<RiskAssessmentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<RiskAssessmentResponse>> GetByRequisition(Guid id, CancellationToken cancellationToken)

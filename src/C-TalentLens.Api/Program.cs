@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using C_TalentLens.Api;
+using C_TalentLens.Api.OpenApi;
 using C_TalentLens.Application;
 using C_TalentLens.Application.Security;
 using C_TalentLens.Domain;
@@ -26,6 +27,7 @@ namespace C_TalentLens
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(options =>
             {
+                options.OperationFilter<SwaggerOperationFilter>();
                 options.SwaggerDoc("v1", new OpenApiInfo
                 {
                     Title = "C-TalentLens API",

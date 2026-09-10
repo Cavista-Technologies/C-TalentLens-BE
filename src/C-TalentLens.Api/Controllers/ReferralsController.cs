@@ -3,6 +3,7 @@ using C_TalentLens.Application.Dtos;
 using C_TalentLens.Application.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using C_TalentLens.Api.OpenApi;
 
 namespace C_TalentLens.Controllers;
 
@@ -12,6 +13,9 @@ namespace C_TalentLens.Controllers;
 public class ReferralsController(IAnalyticsService analytics) : ControllerBase
 {
     [HttpGet]
+    [SwaggerOperation(
+        Summary = "List referrals",
+        Description = "Returns paginated referrals visible to the signed-in user. Supports requisition, status, hiring outcome, referrer department, search, active, and date range filters.")]
     [ProducesResponseType<PagedResponse<ReferralResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<ReferralResponse>>> List(
         [FromQuery] int page = 1,
@@ -35,6 +39,9 @@ public class ReferralsController(IAnalyticsService analytics) : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [SwaggerOperation(
+        Summary = "Get referral details",
+        Description = "Returns one referral with candidate, referrer, resume URL, requisition, status, hiring outcome, and history details.")]
     [ProducesResponseType<ReferralResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ReferralResponse>> Get(Guid id, CancellationToken cancellationToken)
@@ -45,6 +52,9 @@ public class ReferralsController(IAnalyticsService analytics) : ControllerBase
 
     [HttpPost]
     [Authorize(Policy = "RecruitmentWrite")]
+    [SwaggerOperation(
+        Summary = "Create internal referral",
+        Description = "Creates a referral from an authenticated recruiting user. Public referrals should use the public referral endpoint instead.")]
     [ProducesResponseType<ReferralResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ReferralResponse>> Create(
@@ -57,6 +67,9 @@ public class ReferralsController(IAnalyticsService analytics) : ControllerBase
 
     [HttpPatch("{id:guid}/status")]
     [Authorize(Policy = "RecruitmentWrite")]
+    [SwaggerOperation(
+        Summary = "Update referral status",
+        Description = "Updates referral status, hiring outcome, hired date, and status history. Restricted to recruiting users with referral update access.")]
     [ProducesResponseType<ReferralResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ReferralResponse>> UpdateStatus(
@@ -79,6 +92,9 @@ public class ReferralsController(IAnalyticsService analytics) : ControllerBase
 public class ReferralAnalyticsController(IAnalyticsService analytics) : ControllerBase
 {
     [HttpGet]
+    [SwaggerOperation(
+        Summary = "Get referral analytics",
+        Description = "Returns referral submission, conversion, funnel, referrer, department, and monthly trend metrics scoped by the signed-in user's reporting access.")]
     [ProducesResponseType<ReferralAnalyticsResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReferralAnalyticsResponse>> Get(CancellationToken cancellationToken)
     {

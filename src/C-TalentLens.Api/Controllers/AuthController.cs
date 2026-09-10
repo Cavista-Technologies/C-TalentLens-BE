@@ -5,6 +5,7 @@ using C_TalentLens.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using C_TalentLens.Api.OpenApi;
 
 namespace C_TalentLens.Controllers;
 
@@ -18,6 +19,9 @@ public class AuthController(
 {
     [AllowAnonymous]
     [HttpPost("login")]
+    [SwaggerOperation(
+        Summary = "Sign in",
+        Description = "Authenticates a user with email and password, then returns a JWT, profile details, and role information for frontend authorization.")]
     [ProducesResponseType<LoginResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<LoginResponse>> Login(LoginRequest request, CancellationToken cancellationToken)
@@ -50,6 +54,9 @@ public class AuthController(
 
     [Authorize]
     [HttpGet("me")]
+    [SwaggerOperation(
+        Summary = "Get current user",
+        Description = "Returns the authenticated user's profile, department, reporting line, and assigned roles.")]
     [ProducesResponseType<UserProfileResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<UserProfileResponse>> Me()

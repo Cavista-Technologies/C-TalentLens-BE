@@ -15,7 +15,7 @@ public class ReferralsController(IAnalyticsService analytics) : ControllerBase
     [HttpGet]
     [SwaggerOperation(
         Summary = "List referrals",
-        Description = "Returns paginated referrals visible to the signed-in user. Supports requisition, status, hiring outcome, referrer department, search, active, and date range filters.")]
+        Description = "Returns paginated referrals visible to the signed-in user, ordered by most recently updated first. Supports requisition, status, hiring outcome, referrer department, search, active, and date range filters.")]
     [ProducesResponseType<PagedResponse<ReferralResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<ReferralResponse>>> List(
         [FromQuery] int page = 1,

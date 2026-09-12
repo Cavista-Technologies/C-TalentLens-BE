@@ -52,6 +52,41 @@ public class AuthController(
         return Ok(response);
     }
 
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    [SwaggerOperation(
+        Summary = "Refresh access token",
+        Description = "Exchanges a valid, unexpired refresh token for a new access token and a new (rotated) refresh token. The previous refresh token is revoked.")]
+    [ProducesResponseType<RefreshResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<RefreshResponse>> Refresh(RefreshRequest request, CancellationToken cancellationToken)
+    {
+        var response = await tokens.RefreshAsync(request.RefreshToken, cancellationToken);
+        if (response is null)
+        {
+            return Unauthorized(new ProblemDetails
+            {
+                Title = "Invalid session.",
+                Detail = "The refresh token is missing, expired, or has already been used.",
+                Status = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        return Ok(response);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    [SwaggerOperation(
+        Summary = "Sign out",
+        Description = "Revokes the supplied refresh token so it can no longer be used to obtain new access tokens.")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Logout(LogoutRequest request, CancellationToken cancellationToken)
+    {
+        await tokens.RevokeAsync(request.RefreshToken, cancellationToken);
+        return NoContent();
+    }
+
     [Authorize]
     [HttpGet("me")]
     [SwaggerOperation(

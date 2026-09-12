@@ -47,11 +47,14 @@ public class SourceAnalyticsController(IAnalyticsService analytics) : Controller
     [HttpGet]
     [SwaggerOperation(
         Summary = "Get source analytics",
-        Description = "Returns source contribution, source-to-hire conversion, and monthly source trend metrics scoped by the signed-in user's reporting access.")]
+        Description = "Returns source contribution, source-to-hire conversion, and monthly source trend metrics scoped by the signed-in user's reporting access. Optional 'from'/'to' dates filter source activities to that inclusive date window.")]
     [ProducesResponseType<SourceAnalyticsResponse>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<SourceAnalyticsResponse>> Get(CancellationToken cancellationToken)
+    public async Task<ActionResult<SourceAnalyticsResponse>> Get(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        CancellationToken cancellationToken)
     {
-        var response = await analytics.GetSourceAnalyticsAsync(ReportAccessContext.FromPrincipal(User), cancellationToken);
+        var response = await analytics.GetSourceAnalyticsAsync(ReportAccessContext.FromPrincipal(User), from, to, cancellationToken);
         return Ok(response);
     }
 }

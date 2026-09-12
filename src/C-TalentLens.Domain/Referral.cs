@@ -50,6 +50,7 @@ public class Referral
         HiringOutcome = NormalizeOutcome(status, hiringOutcome);
         HiredAt = HiringOutcome == ReferralHiringOutcome.Hired ? hiredAt ?? submissionDate : hiredAt;
         CreatedAt = DateTimeOffset.UtcNow;
+        UpdatedAt = CreatedAt;
     }
 
     public Guid Id { get; private set; }
@@ -94,6 +95,8 @@ public class Referral
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    public DateTimeOffset UpdatedAt { get; private set; }
+
     public bool IsHire => HiringOutcome == ReferralHiringOutcome.Hired;
 
     public bool IsActive => Status is not ReferralStatus.Hired
@@ -127,6 +130,7 @@ public class Referral
         var previousStatus = Status;
         var previousOutcome = HiringOutcome;
         var histories = new List<ReferralHistory>();
+        UpdatedAt = DateTimeOffset.UtcNow;
         Status = status;
         HiringOutcome = NormalizeOutcome(status, hiringOutcome ?? HiringOutcome);
         HiredAt = HiringOutcome == ReferralHiringOutcome.Hired ? hiredAt ?? HiredAt ?? DateOnly.FromDateTime(DateTime.UtcNow) : hiredAt;

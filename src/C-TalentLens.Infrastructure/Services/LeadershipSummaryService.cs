@@ -2,24 +2,40 @@ using C_TalentLens.Application;
 using C_TalentLens.Application.Dtos;
 using C_TalentLens.Application.Security;
 using C_TalentLens.Domain;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace C_TalentLens.Infrastructure.Services;
 
-public class LeadershipSummaryService(
-    IDashboardService dashboardService,
-    IAnalyticsService analyticsService,
-    IRiskService riskService) : ILeadershipSummaryService
+public class LeadershipSummaryService(IServiceScopeFactory scopeFactory) : ILeadershipSummaryService
 {
     public async Task<LeadershipSummaryResponse> GetAsync(
         AccessScope accessScope,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken)
     {
         var reportContext = new ReportAccessContext(accessScope.UserId, accessScope.Roles);
-        var dashboard = await dashboardService.GetAsync(accessScope, cancellationToken);
-        var trends = await analyticsService.GetHiringTrendsAsync(reportContext, cancellationToken);
-        var sourceAnalytics = await analyticsService.GetSourceAnalyticsAsync(reportContext, cancellationToken);
-        var referralAnalytics = await analyticsService.GetReferralAnalyticsAsync(reportContext, cancellationToken);
-        var risks = await riskService.ListAsync(accessScope, cancellationToken);
+
+        // Each of these runs against its own DI scope (and its own DbContext instance), since
+        // the shared DbContext isn't safe to use concurrently from more than one operation at a time.
+        var dashboardTask = RunScopedAsync(
+            provider => provider.GetRequiredService<IDashboardService>().GetAsync(accessScope, cancellationToken));
+        var trendsTask = RunScopedAsync(
+            provider => provider.GetRequiredService<IAnalyticsService>().GetHiringTrendsAsync(reportContext, from, to, cancellationToken));
+        var sourceAnalyticsTask = RunScopedAsync(
+            provider => provider.GetRequiredService<IAnalyticsService>().GetSourceAnalyticsAsync(reportContext, from, to, cancellationToken));
+        var referralAnalyticsTask = RunScopedAsync(
+            provider => provider.GetRequiredService<IAnalyticsService>().GetReferralAnalyticsAsync(reportContext, cancellationToken));
+        var risksTask = RunScopedAsync(
+            provider => provider.GetRequiredService<IRiskService>().ListAsync(accessScope, cancellationToken));
+
+        await Task.WhenAll(dashboardTask, trendsTask, sourceAnalyticsTask, referralAnalyticsTask, risksTask);
+
+        var dashboard = await dashboardTask;
+        var trends = await trendsTask;
+        var sourceAnalytics = await sourceAnalyticsTask;
+        var referralAnalytics = await referralAnalyticsTask;
+        var risks = await risksTask;
 
         var executiveKpis = BuildExecutiveKpis(dashboard);
         var hiringProgress = BuildHiringProgress(dashboard);
@@ -212,5 +228,11 @@ public class LeadershipSummaryService(
     private static decimal Percentage(int value, int total)
     {
         return total == 0 ? 0 : (decimal)Math.Round(value * 100m / total, 1);
+    }
+
+    private async Task<T> RunScopedAsync<T>(Func<IServiceProvider, Task<T>> operation)
+    {
+        using var scope = scopeFactory.CreateScope();
+        return await operation(scope.ServiceProvider);
     }
 }

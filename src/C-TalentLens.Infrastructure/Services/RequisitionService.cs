@@ -27,16 +27,16 @@ public class RequisitionService(
         PageRequest pageRequest,
         CancellationToken cancellationToken)
     {
-        var orderedQuery = ApplyQuery(accessScope.ApplyTo(QueryForRead()), query)
-            .OrderBy(requisition => requisition.CurrentStatus == RequisitionStatus.Closed)
-            .ThenBy(requisition => requisition.Priority)
-            .ThenBy(requisition => requisition.DateOpened);
+        var filteredQuery = ApplyQuery(accessScope.ApplyTo(QueryForRead()), query);
 
-        var totalItems = await orderedQuery.CountAsync(cancellationToken);
-        var requisitions = await orderedQuery
+        var matching = await filteredQuery.ToListAsync(cancellationToken);
+        var ordered = matching.OrderByDescending(requisition => requisition.UpdatedAt).ToList();
+
+        var totalItems = ordered.Count;
+        var requisitions = ordered
             .Skip((pageRequest.NormalizedPage - 1) * pageRequest.NormalizedPageSize)
             .Take(pageRequest.NormalizedPageSize)
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         var items = requisitions
             .Select(requisition => RequisitionMapper.ToResponse(requisition, clock, RecruitmentRules.StaleAfterDays))

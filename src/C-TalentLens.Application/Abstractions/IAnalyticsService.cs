@@ -16,12 +16,20 @@ public interface IAnalyticsService
 
     Task<SourceAnalyticsResponse> GetSourceAnalyticsAsync(
         ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken);
 
-    Task<HiringTrendResponse> GetHiringTrendsAsync(ReportAccessContext reportContext, CancellationToken cancellationToken);
+    Task<HiringTrendResponse> GetHiringTrendsAsync(
+        ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<RequisitionResponse>> ListReportRequisitionsAsync(
         ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken);
 
     Task<ReferralResponse> CreateReferralAsync(

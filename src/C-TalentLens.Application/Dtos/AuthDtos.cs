@@ -8,9 +8,20 @@ public record LoginRequest(
 
 public record LoginResponse(
     string AccessToken,
+    string RefreshToken,
     string TokenType,
     DateTimeOffset ExpiresAt,
     UserProfileResponse User);
+
+public record RefreshRequest([Required] string RefreshToken);
+
+public record RefreshResponse(
+    string AccessToken,
+    string RefreshToken,
+    string TokenType,
+    DateTimeOffset ExpiresAt);
+
+public record LogoutRequest([Required] string RefreshToken);
 
 public record UserProfileResponse(
     Guid Id,

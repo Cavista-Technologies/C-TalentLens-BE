@@ -15,7 +15,7 @@ public class RequisitionsController(IRequisitionService requisitions) : Controll
     [Authorize]
     [SwaggerOperation(
         Summary = "List requisitions",
-        Description = "Returns a paginated list of requisitions visible to the signed-in user. Supports search, team, recruiter, hiring manager, priority, status, stage, SLA, overdue, open, closed, and filled filters.")]
+        Description = "Returns a paginated list of requisitions visible to the signed-in user, ordered by most recently updated first. Supports search, team, recruiter, hiring manager, priority, status, stage, SLA, overdue, open, closed, and filled filters.")]
     [ProducesResponseType<PagedResponse<RequisitionResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<RequisitionResponse>>> List(
         [FromQuery] int page = 1,

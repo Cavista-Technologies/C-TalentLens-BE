@@ -86,17 +86,18 @@ public class AlertService(TalentLensDbContext dbContext, IClock clock) : IAlertS
             notifications = scope(notifications);
         }
 
-        notifications = ApplyQuery(notifications, query)
-            .OrderByDescending(notification => notification.AlertSignal.Severity)
-            .ThenBy(notification => notification.RecipientName)
-            .ThenBy(notification => notification.AlertSignal.RequisitionCode)
-            .ThenBy(notification => notification.AlertSignal.Type);
+        notifications = ApplyQuery(notifications, query);
 
-        var totalItems = await notifications.CountAsync(cancellationToken);
-        var rows = await notifications
+        var matching = await notifications.ToListAsync(cancellationToken);
+        var ordered = matching
+            .OrderByDescending(notification => notification.CreatedAt)
+            .ToList();
+
+        var totalItems = ordered.Count;
+        var rows = ordered
             .Skip((pageRequest.NormalizedPage - 1) * pageRequest.NormalizedPageSize)
             .Take(pageRequest.NormalizedPageSize)
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         return Pagination.ToPagedResponse(
             rows.Select(ToResponse).ToList(),

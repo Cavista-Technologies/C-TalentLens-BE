@@ -3,6 +3,7 @@ using System;
 using C_TalentLens.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace C_TalentLens.Infrastructure.Migrations
 {
     [DbContext(typeof(TalentLensDbContext))]
-    partial class TalentLensDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260912172712_AddRefreshTokens")]
+    partial class AddRefreshTokens
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
@@ -439,9 +442,6 @@ namespace C_TalentLens.Infrastructure.Migrations
 
                     b.Property<string>("SubmitterName")
                         .HasMaxLength(160)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

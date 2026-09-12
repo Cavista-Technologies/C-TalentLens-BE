@@ -5,5 +5,9 @@ namespace C_TalentLens.Application;
 
 public interface ILeadershipSummaryService
 {
-    Task<LeadershipSummaryResponse> GetAsync(AccessScope accessScope, CancellationToken cancellationToken);
+    Task<LeadershipSummaryResponse> GetAsync(
+        AccessScope accessScope,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken);
 }

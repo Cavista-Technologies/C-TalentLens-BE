@@ -19,6 +19,8 @@ public class TalentLensDbContext(DbContextOptions<TalentLensDbContext> options)
 
     public DbSet<Notification> Notifications => Set<Notification>();
 
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -609,6 +611,28 @@ public class TalentLensDbContext(DbContextOptions<TalentLensDbContext> options)
                 .WithMany()
                 .HasForeignKey(notification => notification.RecipientUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(token => token.Id);
+
+            entity.Property(token => token.Id)
+                .ValueGeneratedNever();
+
+            entity.Property(token => token.TokenHash)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.HasIndex(token => token.TokenHash)
+                .IsUnique();
+
+            entity.HasIndex(token => token.UserId);
+
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(token => token.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

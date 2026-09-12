@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using C_TalentLens.Application;
 using C_TalentLens.Application.Dtos;
 using C_TalentLens.Application.Exceptions;
@@ -77,9 +78,11 @@ public class AnalyticsService(
 
     public async Task<SourceAnalyticsResponse> GetSourceAnalyticsAsync(
         ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken)
     {
-        var records = await GetReportSourceRecordsAsync(reportContext, cancellationToken);
+        var records = await GetReportSourceRecordsAsync(reportContext, from, to, cancellationToken);
         var totalActivities = records.Count;
         var totalHires = records.Count(item => item.activity.IsHire);
 
@@ -125,17 +128,20 @@ public class AnalyticsService(
 
     public async Task<HiringTrendResponse> GetHiringTrendsAsync(
         ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken)
     {
-        var requisitions = await reportContext.ApplyTo(dbContext.Requisitions.AsNoTracking())
+        var requisitionQuery = ApplyRequisitionDateWindow(reportContext.ApplyTo(dbContext.Requisitions.AsNoTracking()), from, to);
+        var requisitions = await requisitionQuery
             .Select(requisition => new HiringTrendRequisition(
                 requisition.DateOpened,
                 requisition.ClosedDate,
                 requisition.OfferExtendedDate,
                 requisition.HiringGoal))
             .ToListAsync(cancellationToken);
-        var sourceRecords = await GetReportSourceRecordsAsync(reportContext, cancellationToken);
-        var referralRecords = await GetReportReferralRecordsAsync(reportContext, cancellationToken);
+        var sourceRecords = await GetReportSourceRecordsAsync(reportContext, from, to, cancellationToken);
+        var referralRecords = await GetReportReferralRecordsAsync(reportContext, from, to, cancellationToken);
 
         var months = requisitions
             .Select(requisition => MonthKey(requisition.DateOpened))
@@ -181,9 +187,11 @@ public class AnalyticsService(
 
     public async Task<IReadOnlyCollection<RequisitionResponse>> ListReportRequisitionsAsync(
         ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken)
     {
-        var requisitions = await reportContext.ApplyTo(QueryRequisitions())
+        var requisitions = await ApplyRequisitionDateWindow(reportContext.ApplyTo(QueryRequisitions()), from, to)
             .OrderBy(requisition => requisition.CurrentStatus == RequisitionStatus.Closed)
             .ThenBy(requisition => requisition.CurrentStage)
             .ThenBy(requisition => requisition.DateOpened)
@@ -329,8 +337,8 @@ public class AnalyticsService(
         ReportAccessContext reportContext,
         CancellationToken cancellationToken)
     {
-        var records = await GetReportReferralRecordsAsync(reportContext, cancellationToken);
-        var sourceRecords = await GetReportSourceRecordsAsync(reportContext, cancellationToken);
+        var records = await GetReportReferralRecordsAsync(reportContext, null, null, cancellationToken);
+        var sourceRecords = await GetReportSourceRecordsAsync(reportContext, null, null, cancellationToken);
         var totalSubmitted = records.Count;
         var totalHires = records.Count(item => item.referral.IsHire);
         var totalHiresFromAllSources = sourceRecords.Count(item => item.activity.IsHire);
@@ -434,31 +442,48 @@ public class AnalyticsService(
     {
         return await GetSourceRecordsAsync(
             accessScope.ApplyTo(dbContext.Requisitions.AsNoTracking()),
+            null,
+            null,
             cancellationToken);
     }
 
     private async Task<IReadOnlyCollection<SourceRecord>> GetReportSourceRecordsAsync(
         ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken)
     {
         return await GetSourceRecordsAsync(
             reportContext.ApplyTo(dbContext.Requisitions.AsNoTracking()),
+            from,
+            to,
             cancellationToken);
     }
 
     private async Task<IReadOnlyCollection<SourceRecord>> GetSourceRecordsAsync(
         IQueryable<Requisition> requisitionQuery,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken)
     {
-        return await (
-                from activity in dbContext.SourceActivities.AsNoTracking()
-                join requisition in requisitionQuery on activity.RequisitionId equals requisition.Id
-                select new SourceRecord(activity, requisition))
-            .ToListAsync(cancellationToken);
+        var activities = ApplyDateWindow(
+            dbContext.SourceActivities.AsNoTracking().AsQueryable(),
+            activity => activity.ActivityDate,
+            from,
+            to);
+
+        var query =
+            from activity in activities
+            join requisition in requisitionQuery on activity.RequisitionId equals requisition.Id
+            select new SourceRecord(activity, requisition);
+
+        return await query.ToListAsync(cancellationToken);
     }
 
     private async Task<IReadOnlyCollection<ReferralRecord>> GetReportReferralRecordsAsync(
         ReportAccessContext reportContext,
+        DateOnly? from,
+        DateOnly? to,
         CancellationToken cancellationToken)
     {
         var requisitionsById = await reportContext.ApplyTo(dbContext.Requisitions.AsNoTracking())
@@ -471,14 +496,59 @@ public class AnalyticsService(
             .ToDictionaryAsync(requisition => requisition.Id, cancellationToken);
 
         var requisitionIds = requisitionsById.Keys.ToList();
-        var referrals = await dbContext.Referrals
-            .AsNoTracking()
-            .Where(referral => requisitionIds.Contains(referral.RequisitionId))
-            .ToListAsync(cancellationToken);
+        var referralQuery = ApplyDateWindow(
+            dbContext.Referrals.AsNoTracking().Where(referral => requisitionIds.Contains(referral.RequisitionId)),
+            referral => referral.SubmissionDate,
+            from,
+            to);
+
+        var referrals = await referralQuery.ToListAsync(cancellationToken);
 
         return referrals
             .Select(referral => new ReferralRecord(referral, requisitionsById[referral.RequisitionId]))
             .ToList();
+    }
+
+    private static IQueryable<Requisition> ApplyRequisitionDateWindow(IQueryable<Requisition> query, DateOnly? from, DateOnly? to)
+    {
+        if (from is null && to is null)
+        {
+            return query;
+        }
+
+        return query.Where(requisition =>
+            ((from == null || requisition.DateOpened >= from) && (to == null || requisition.DateOpened <= to)) ||
+            (requisition.ClosedDate != null &&
+             (from == null || requisition.ClosedDate >= from) &&
+             (to == null || requisition.ClosedDate <= to)));
+    }
+
+    private static IQueryable<T> ApplyDateWindow<T>(
+        IQueryable<T> query,
+        Expression<Func<T, DateOnly>> dateSelector,
+        DateOnly? from,
+        DateOnly? to)
+    {
+        if (from is not null)
+        {
+            query = query.Where(BuildDateComparison(dateSelector, ExpressionType.GreaterThanOrEqual, from.Value));
+        }
+
+        if (to is not null)
+        {
+            query = query.Where(BuildDateComparison(dateSelector, ExpressionType.LessThanOrEqual, to.Value));
+        }
+
+        return query;
+    }
+
+    private static Expression<Func<T, bool>> BuildDateComparison<T>(
+        Expression<Func<T, DateOnly>> dateSelector,
+        ExpressionType comparison,
+        DateOnly value)
+    {
+        var body = Expression.MakeBinary(comparison, dateSelector.Body, Expression.Constant(value));
+        return Expression.Lambda<Func<T, bool>>(body, dateSelector.Parameters);
     }
 
     private async Task<PagedReferralRecords> GetReferralPageAsync(
@@ -504,15 +574,11 @@ public class AnalyticsService(
                 EF.Functions.Like(item.requisition.RoleName, term));
         }
 
-        var totalItems = await referralQuery.CountAsync(cancellationToken);
-        var pageRows = await referralQuery
-            .OrderByDescending(item => item.referral.SubmissionDate)
-            .ThenBy(item => item.referral.CandidateName)
-            .Skip((pageRequest.NormalizedPage - 1) * pageRequest.NormalizedPageSize)
-            .Take(pageRequest.NormalizedPageSize)
+        var projected = await referralQuery
             .Select(item => new
             {
                 ReferralId = item.referral.Id,
+                item.referral.UpdatedAt,
                 RequisitionId = item.requisition.Id,
                 item.requisition.RequisitionCode,
                 item.requisition.RoleName,
@@ -520,6 +586,13 @@ public class AnalyticsService(
                 item.requisition.Recruiter
             })
             .ToListAsync(cancellationToken);
+
+        var ordered = projected.OrderByDescending(item => item.UpdatedAt).ToList();
+        var totalItems = ordered.Count;
+        var pageRows = ordered
+            .Skip((pageRequest.NormalizedPage - 1) * pageRequest.NormalizedPageSize)
+            .Take(pageRequest.NormalizedPageSize)
+            .ToList();
 
         var referralIds = pageRows.Select(item => item.ReferralId).ToList();
         var referralsById = await dbContext.Referrals

@@ -441,7 +441,7 @@ public class TalentLensApiIntegrationTests : IDisposable
         var response = await client.PostAsJsonAsync("/api/public/referrals", new CreatePublicReferralRequest(
             requisition.Id,
             "Amina Yusuf",
-            "amina.yusuf@cavista.com",
+            "amina.yusuf@axxess.com",
             "Sales",
             "Jordan Kim",
             "jordan.kim@example.com",
@@ -456,14 +456,14 @@ public class TalentLensApiIntegrationTests : IDisposable
         Assert.NotNull(referral);
         Assert.Equal(requisition.Id, referral.RequisitionId);
         Assert.Equal("Amina Yusuf", referral.ReferrerName);
-        Assert.Equal("amina.yusuf@cavista.com", referral.SubmitterEmail);
+        Assert.Equal("amina.yusuf@axxess.com", referral.SubmitterEmail);
         Assert.Equal(ReferralStatus.Submitted, referral.Status);
         Assert.Equal(ReferralHiringOutcome.Pending, referral.HiringOutcome);
         Assert.Contains(referral.History, history => history.ChangedBy == "Referral Portal");
     }
 
     [Fact]
-    public async Task PublicReferrals_RequireCavistaReferrerEmail()
+    public async Task PublicReferrals_RequireAxxessReferrerEmail()
     {
         var client = _factory.CreateClient();
         var requisitions = await client.GetFromJsonAsync<IReadOnlyCollection<PublicRequisitionResponse>>(

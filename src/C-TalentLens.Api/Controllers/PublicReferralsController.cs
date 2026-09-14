@@ -29,7 +29,7 @@ public class PublicReferralsController(
     [HttpPost("referrals")]
     [SwaggerOperation(
         Summary = "Submit public referral",
-        Description = "Creates a referral from the public company referral page. Requires a Cavista email address and an eligible open requisition.")]
+        Description = "Creates a referral from the public company referral page. Requires an Axxess email address and an eligible open requisition.")]
     [ProducesResponseType<ReferralResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ReferralResponse>> CreateReferral(

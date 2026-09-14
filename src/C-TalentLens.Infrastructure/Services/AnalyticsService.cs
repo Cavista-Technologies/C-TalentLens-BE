@@ -21,7 +21,7 @@ public class AnalyticsService(
 {
     private const string PublicReferralActorEmail = "referral.portal@talentlens.local";
     private const string PublicReferralActorName = "Referral Portal";
-    private const string PublicReferralEmailDomain = "@cavista.com";
+    private const string PublicReferralEmailDomain = "@axxess.com";
 
     public async Task<SourceActivityResponse> CreateSourceActivityAsync(
         AccessScope accessScope,
@@ -231,7 +231,7 @@ public class AnalyticsService(
     {
         if (!request.ReferrerEmail.Trim().EndsWith(PublicReferralEmailDomain, StringComparison.OrdinalIgnoreCase))
         {
-            throw new BadRequestException("Use your Cavista email address to submit a referral.", "invalid_referrer_email_domain");
+            throw new BadRequestException("Use your Axxess email address to submit a referral.", "invalid_referrer_email_domain");
         }
 
         var requisition = await dbContext.Requisitions

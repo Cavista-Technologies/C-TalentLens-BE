@@ -318,6 +318,18 @@ public class AnalyticsService(
             changedBy.FullName,
             request.Notes);
         dbContext.Set<ReferralHistory>().AddRange(histories);
+
+        if (previousOutcome != ReferralHiringOutcome.Hired &&
+            record.referral.HiringOutcome == ReferralHiringOutcome.Hired)
+        {
+            await EnsureReferralSourceActivityAsync(record.referral, cancellationToken);
+        }
+        else if (previousOutcome == ReferralHiringOutcome.Hired &&
+                 record.referral.HiringOutcome != ReferralHiringOutcome.Hired)
+        {
+            await RemoveReferralSourceActivityAsync(record.referral.Id, cancellationToken);
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
@@ -748,14 +760,14 @@ public class AnalyticsService(
                 referral.Status != ReferralStatus.Ineligible);
         }
 
-        if (request.SubmittedFrom is not null)
+        if (request.HiredFrom is not null)
         {
-            query = query.Where(referral => referral.SubmissionDate >= request.SubmittedFrom);
+            query = query.Where(referral => referral.HiredAt >= request.HiredFrom);
         }
 
-        if (request.SubmittedTo is not null)
+        if (request.HiredTo is not null)
         {
-            query = query.Where(referral => referral.SubmissionDate <= request.SubmittedTo);
+            query = query.Where(referral => referral.HiredAt <= request.HiredTo);
         }
 
         return query;
@@ -792,6 +804,12 @@ public class AnalyticsService(
 
         dbContext.Referrals.Add(referral);
         dbContext.Set<ReferralHistory>().Add(history);
+
+        if (referral.HiringOutcome == ReferralHiringOutcome.Hired)
+        {
+            await EnsureReferralSourceActivityAsync(referral, cancellationToken);
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
@@ -803,6 +821,41 @@ public class AnalyticsService(
             referral.HiringOutcome);
 
         return ToResponse(referral, requisition);
+    }
+
+    // A referral marked Hired also counts as a "Referral" source-of-hire activity.
+    private async Task EnsureReferralSourceActivityAsync(Referral referral, CancellationToken cancellationToken)
+    {
+        var alreadyLinked = await dbContext.SourceActivities
+            .AnyAsync(activity => activity.ReferralId == referral.Id, cancellationToken);
+
+        if (alreadyLinked)
+        {
+            return;
+        }
+
+        dbContext.SourceActivities.Add(new SourceActivity(
+            referral.RequisitionId,
+            referral.CandidateName,
+            HireSource.Referral,
+            null,
+            referral.SubmissionDate,
+            SourceActivityStatus.Hired,
+            referral.HiredAt,
+            referral.Id));
+    }
+
+    // Reverses EnsureReferralSourceActivityAsync when a referral's outcome is corrected away
+    // from Hired, so it stops counting toward source-of-hire analytics.
+    private async Task RemoveReferralSourceActivityAsync(Guid referralId, CancellationToken cancellationToken)
+    {
+        var linked = await dbContext.SourceActivities
+            .FirstOrDefaultAsync(activity => activity.ReferralId == referralId, cancellationToken);
+
+        if (linked is not null)
+        {
+            dbContext.SourceActivities.Remove(linked);
+        }
     }
 
     private async Task<ApplicationUser> GetOrCreatePublicReferralActorAsync(CancellationToken cancellationToken)

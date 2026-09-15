@@ -15,7 +15,7 @@ public class ReferralsController(IAnalyticsService analytics) : ControllerBase
     [HttpGet]
     [SwaggerOperation(
         Summary = "List referrals",
-        Description = "Returns paginated referrals visible to the signed-in user, ordered by most recently updated first. Supports requisition, status, hiring outcome, referrer department, search, active, and date range filters.")]
+        Description = "Returns paginated referrals visible to the signed-in user, ordered by most recently updated first. Supports requisition, status, hiring outcome, referrer department, search, active, and hired/resumption date range filters.")]
     [ProducesResponseType<PagedResponse<ReferralResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResponse<ReferralResponse>>> List(
         [FromQuery] int page = 1,
@@ -26,13 +26,13 @@ public class ReferralsController(IAnalyticsService analytics) : ControllerBase
         [FromQuery] string? referrerDepartment = null,
         [FromQuery] string? search = null,
         [FromQuery] bool? activeOnly = null,
-        [FromQuery] DateOnly? submittedFrom = null,
-        [FromQuery] DateOnly? submittedTo = null,
+        [FromQuery] DateOnly? hiredFrom = null,
+        [FromQuery] DateOnly? hiredTo = null,
         CancellationToken cancellationToken = default)
     {
         var response = await analytics.ListReferralsAsync(
             AccessScope.FromPrincipal(User),
-            new ReferralQuery(requisitionId, status, hiringOutcome, referrerDepartment, search, activeOnly, submittedFrom, submittedTo),
+            new ReferralQuery(requisitionId, status, hiringOutcome, referrerDepartment, search, activeOnly, hiredFrom, hiredTo),
             new PageRequest(page, pageSize),
             cancellationToken);
         return Ok(response);

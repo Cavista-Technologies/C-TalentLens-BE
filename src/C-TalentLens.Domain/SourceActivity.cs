@@ -13,7 +13,8 @@ public class SourceActivity
         string? customSource,
         DateOnly activityDate,
         SourceActivityStatus status,
-        DateOnly? hiredAt)
+        DateOnly? hiredAt,
+        Guid? referralId = null)
     {
         if (source == HireSource.Other && string.IsNullOrWhiteSpace(customSource))
         {
@@ -28,6 +29,7 @@ public class SourceActivity
         ActivityDate = activityDate;
         Status = status;
         HiredAt = status == SourceActivityStatus.Hired ? hiredAt ?? activityDate : hiredAt;
+        ReferralId = referralId;
         CreatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -46,6 +48,8 @@ public class SourceActivity
     public SourceActivityStatus Status { get; private set; }
 
     public DateOnly? HiredAt { get; private set; }
+
+    public Guid? ReferralId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

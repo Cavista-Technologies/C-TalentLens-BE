@@ -120,7 +120,6 @@ public class AlertSignalSyncService(
             .Include(requisition => requisition.Bottlenecks)
             .Include(requisition => requisition.ActionItems)
             .AsSplitQuery()
-            .Where(requisition => requisition.CurrentStatus != RequisitionStatus.Closed)
             .ToListAsync(cancellationToken);
 
         var alerts = new List<AlertCandidate>();
@@ -132,6 +131,18 @@ public class AlertSignalSyncService(
         {
             var recruiter = FindById(users, requisition.RecruiterUserId);
             if (recruiter is null)
+            {
+                continue;
+            }
+
+            // Bottlenecks and overdue actions can be left dangling on a requisition even after
+            // it closes, so those alerts still apply here regardless of CurrentStatus. The
+            // requisition-timing checks below (SLA, staleness, risk score) only make sense for
+            // requisitions that are still open.
+            alerts.AddRange(CreateBottleneckAlerts(users, requisition, recruiter));
+            alerts.AddRange(CreateOverdueActionAlerts(users, requisition, recruiter));
+
+            if (requisition.IsClosed)
             {
                 continue;
             }
@@ -191,9 +202,6 @@ public class AlertSignalSyncService(
                         ["lastUpdatedAt"] = requisition.UpdatedAt.ToString("O")
                     }));
             }
-
-            alerts.AddRange(CreateBottleneckAlerts(users, requisition, recruiter));
-            alerts.AddRange(CreateOverdueActionAlerts(users, requisition, recruiter));
 
             if (assessment.RiskLevel == RiskLevel.Critical)
             {
@@ -270,22 +278,17 @@ public class AlertSignalSyncService(
         Requisition requisition,
         UserRecipient fallbackRecipient)
     {
-        foreach (var action in requisition.ActionItems.Where(item =>
-                     item.IsOpen &&
-                     item.DueDate is not null &&
-                     item.DueDate <= clock.Today))
+        foreach (var action in requisition.ActionItems.Where(item => item.IsOverdue(clock.Today)))
         {
             var dueDate = action.DueDate.GetValueOrDefault();
             var daysOverdue = action.DaysOverdue(clock.Today);
-            var recipient = FindById(users, action.OwnerUserId) ?? fallbackRecipient;
+            var recipients = ResolveOverdueActionRecipients(users, requisition, action, fallbackRecipient);
             yield return CreateAlert(
                 AlertType.OverdueAction,
                 ActionSeverity(daysOverdue),
-                [recipient],
+                recipients,
                 requisition,
-                daysOverdue == 0
-                    ? $"{requisition.RoleName} has an action due today."
-                    : $"{requisition.RoleName} has an overdue action.",
+                $"{requisition.RoleName} has an overdue action.",
                 action.Description,
                 "Complete action",
                 new Dictionary<string, string>
@@ -298,6 +301,24 @@ public class AlertSignalSyncService(
                     ["daysOverdue"] = daysOverdue.ToString()
                 });
         }
+    }
+
+    private static IReadOnlyCollection<UserRecipient> ResolveOverdueActionRecipients(
+        IReadOnlyCollection<UserRecipient> users,
+        Requisition requisition,
+        ActionItem action,
+        UserRecipient fallbackRecipient)
+    {
+        return new[]
+            {
+                FindById(users, action.OwnerUserId),
+                FindById(users, requisition.RecruiterUserId),
+                FindById(users, requisition.HiringManagerUserId),
+                fallbackRecipient
+            }
+            .OfType<UserRecipient>()
+            .DistinctBy(recipient => recipient.UserId)
+            .ToList();
     }
 
     private async Task<IReadOnlyCollection<UserRecipient>> LoadUsersAsync(CancellationToken cancellationToken)

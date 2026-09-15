@@ -384,6 +384,10 @@ public class TalentLensDbContext(DbContextOptions<TalentLensDbContext> options)
 
             entity.HasIndex(activity => activity.HiredAt);
 
+            entity.HasIndex(activity => activity.ReferralId)
+                .IsUnique()
+                .HasFilter("\"ReferralId\" IS NOT NULL");
+
             entity.HasOne<Requisition>()
                 .WithMany()
                 .HasForeignKey(activity => activity.RequisitionId)

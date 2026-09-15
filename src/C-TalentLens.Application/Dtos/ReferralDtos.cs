@@ -44,8 +44,8 @@ public record ReferralQuery(
     string? ReferrerDepartment,
     string? Search,
     bool? ActiveOnly,
-    DateOnly? SubmittedFrom,
-    DateOnly? SubmittedTo);
+    DateOnly? HiredFrom,
+    DateOnly? HiredTo);
 
 public record UpdateReferralStatusRequest(
     ReferralStatus Status,

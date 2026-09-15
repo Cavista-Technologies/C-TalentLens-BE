@@ -37,9 +37,9 @@ public class ImportService(
             .Where(referral => visibleRequisitionIds.Contains(referral.RequisitionId))
             .ToListAsync(cancellationToken);
         var errors = new List<ImportRowErrorResponse>();
-        var importedIds = new List<Guid>();
+        var skips = new List<ImportRowSkipResponse>();
+        var importedItems = new List<ImportRowOutcomeResponse>();
         var imported = 0;
-        var skipped = 0;
 
         foreach (var item in rows.Select((row, index) => new { row, rowNumber = index + 1 }))
         {
@@ -74,7 +74,9 @@ public class ImportService(
                     string.Equals(referral.CandidateName, row.CandidateFullName, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(referral.ReferrerName, referrerName, StringComparison.OrdinalIgnoreCase)))
             {
-                skipped++;
+                skips.Add(new ImportRowSkipResponse(
+                    item.rowNumber,
+                    $"A referral for '{row.CandidateFullName}' from '{referrerName}' already exists on this requisition."));
                 continue;
             }
 
@@ -104,7 +106,7 @@ public class ImportService(
             dbContext.Referrals.Add(referral);
             dbContext.Set<ReferralHistory>().Add(history);
             existingReferrals.Add(referral);
-            importedIds.Add(referral.Id);
+            importedItems.Add(new ImportRowOutcomeResponse(referral.Id, ImportRowAction.Imported));
             imported++;
         }
 
@@ -114,17 +116,18 @@ public class ImportService(
             "Referral import completed by user {ActorUserId}. Imported: {ImportedCount}; Skipped: {SkippedCount}; Failed: {FailedCount}.",
             actor.Id,
             imported,
-            skipped,
+            skips.Count,
             errors.Count);
 
         return new ImportResultResponse(
             rows.Count,
             imported,
             0,
-            skipped,
+            skips.Count,
             errors.Count,
             errors,
-            importedIds);
+            skips,
+            importedItems);
     }
 
     public async Task<ImportResultResponse> ImportRequisitionsAsync(
@@ -153,7 +156,7 @@ public class ImportService(
             .Select(requisition => requisition.RequisitionCode)
             .ToListAsync(cancellationToken);
         var errors = new List<ImportRowErrorResponse>();
-        var importedIds = new List<Guid>();
+        var importedItems = new List<ImportRowOutcomeResponse>();
         var imported = 0;
         var updated = 0;
 
@@ -248,7 +251,7 @@ public class ImportService(
                 dbContext.Requisitions.Add(requisition);
                 visibleExistingRequisitions.Add(requisition);
                 existingRequisitionCodes.Add(requisition.RequisitionCode);
-                importedIds.Add(requisition.Id);
+                importedItems.Add(new ImportRowOutcomeResponse(requisition.Id, ImportRowAction.Imported));
                 imported++;
                 continue;
             }
@@ -281,7 +284,7 @@ public class ImportService(
                 row.CommentOnStatus,
                 row.NotesFromHiringManager);
             existing.MoveTo(row.Stage);
-            importedIds.Add(existing.Id);
+            importedItems.Add(new ImportRowOutcomeResponse(existing.Id, ImportRowAction.Updated));
             updated++;
         }
 
@@ -301,7 +304,8 @@ public class ImportService(
             0,
             errors.Count,
             errors,
-            importedIds);
+            [],
+            importedItems);
     }
 
     private static Requisition? ResolveReferralRequisition(

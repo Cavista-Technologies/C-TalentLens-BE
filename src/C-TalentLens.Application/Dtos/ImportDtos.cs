@@ -10,12 +10,27 @@ public record ImportResultResponse(
     int SkippedCount,
     int FailedCount,
     IReadOnlyCollection<ImportRowErrorResponse> Errors,
-    IReadOnlyCollection<Guid> ImportedIds);
+    IReadOnlyCollection<ImportRowSkipResponse> Skipped,
+    IReadOnlyCollection<ImportRowOutcomeResponse> ImportedItems);
 
 public record ImportRowErrorResponse(
     int RowNumber,
     string ErrorCode,
     string Message);
+
+public record ImportRowSkipResponse(
+    int RowNumber,
+    string Reason);
+
+public record ImportRowOutcomeResponse(
+    Guid Id,
+    ImportRowAction Action);
+
+public enum ImportRowAction
+{
+    Imported,
+    Updated
+}
 
 public record ReferralImportRowRequest(
     Guid? RequisitionId,
